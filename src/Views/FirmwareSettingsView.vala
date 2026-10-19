@@ -64,6 +64,11 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
             xalign = 0,
             visible = false
         };
+#if HAS_FWUPD_PENDING_REBOOT
+        client.notify["pending-reboot"].connect (() => {
+            reboot_label.visible = client.get_pending_reboot ();
+        });
+#endif
         settings_box = new Gtk.Box (VERTICAL, 12);
 
         var content = new Gtk.Box (VERTICAL, 12) {
@@ -175,15 +180,20 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
             if (cancellable.is_cancelled ()) {
                 return;
             }
+#if HAS_FWUPD_PENDING_REBOOT
+            reboot_label.visible = client.get_pending_reboot ();
+#endif
 #if HAS_FWUPD_BIOS_METADATA
             var groups = new HashTable<string, Gtk.Box> (str_hash, str_equal);
 #endif
             foreach (var setting in settings) {
+#if !HAS_FWUPD_PENDING_REBOOT
                 // fwupd exposes this status even when other values are hidden.
                 if (setting.get_name () == "pending_reboot") {
                     reboot_label.visible |= setting.get_current_value () == "1";
                     continue;
                 }
+#endif
 
                 var parent = settings_box;
 #if HAS_FWUPD_BIOS_METADATA
