@@ -3,13 +3,24 @@
  */
 
 public class About.FirmwareSettingsView : Adw.NavigationPage {
-    private Fwupd.Client client = new Fwupd.Client ();
+    private FirmwareSettingsBackend backend;
     private Gtk.Box settings_box;
     private Gtk.Label status_label;
     private Gtk.Label reboot_label;
     private Gtk.Button refresh_button;
     private HashTable<string, string> drafts = new HashTable<string, string> (str_hash, str_equal);
+    private HashTable<string, Gtk.Entry> entries = new HashTable<string, Gtk.Entry> (str_hash, str_equal);
+    private HashTable<string, Gtk.Button> apply_buttons = new HashTable<string, Gtk.Button> (str_hash, str_equal);
+    private HashTable<string, Gtk.Label> conflicts = new HashTable<string, Gtk.Label> (str_hash, str_equal);
     private bool busy;
+
+    public FirmwareSettingsView () {
+        backend = new FwupdFirmwareSettingsBackend ();
+    }
+
+    internal FirmwareSettingsView.with_backend (FirmwareSettingsBackend backend) {
+        this.backend = backend;
+    }
 
     construct {
         title = _("Firmware Settings");
@@ -78,14 +89,15 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
         while (settings_box.get_first_child () != null) {
             settings_box.remove (settings_box.get_first_child ());
         }
+        entries.remove_all ();
+        apply_buttons.remove_all ();
+        conflicts.remove_all ();
 
         status_label.label = _("Loading firmware settings…");
         reboot_label.visible = false;
 
         try {
-            yield client.connect_async (null);
-            yield client.set_feature_flags_async (Fwupd.FeatureFlags.ALLOW_AUTHENTICATION, null);
-            var settings = yield client.get_bios_settings_async (null);
+            var settings = yield backend.read ();
             var present = new HashTable<string, string> (str_hash, str_equal);
             foreach (var setting in settings) {
                 // fwupd exposes this status even when other values are hidden.
@@ -194,7 +206,10 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
             var apply_button = new Gtk.Button.with_label (_("Apply")) { sensitive = false };
             apply_button.update_property (Gtk.AccessibleProperty.LABEL, _("Apply %s").printf (name_label.label), -1);
             controls.append (apply_button);
+            apply_buttons.insert (id, apply_button);
+            conflicts.insert (id, conflict_label);
             if (entry != null) {
+                entries.insert (id, entry);
                 entry.changed.connect (() => {
                     var valid = valid_value (setting, entry.text);
                     conflict_label.label = valid ? "" : _("The pending value conflicts with the current firmware constraints.");
@@ -241,12 +256,14 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
 
     private void add_unavailable_draft (string id, string value) {
         var box = new Gtk.Box (VERTICAL, 6);
-        box.append (new Gtk.Label (id) { xalign = 0, wrap = true });
-        box.append (new Gtk.Label (value) { xalign = 0, wrap = true, selectable = true });
-        box.append (new Gtk.Label (_("This pending value cannot be applied because the setting is no longer available.")) {
+        var conflict = new Gtk.Label (_("This pending value cannot be applied because the setting is no longer available.")) {
             xalign = 0,
             wrap = true
-        });
+        };
+        box.append (new Gtk.Label (id) { xalign = 0, wrap = true });
+        box.append (new Gtk.Label (value) { xalign = 0, wrap = true, selectable = true });
+        box.append (conflict);
+        conflicts.insert (id, conflict);
         settings_box.append (box);
     }
 
@@ -282,9 +299,7 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
         set_busy (true);
         status_label.label = _("Applying firmware setting…");
         try {
-            var changes = new HashTable<string, string> (str_hash, str_equal);
-            changes.insert (id, value);
-            yield client.modify_bios_setting_async ((owned) changes, null);
+            yield backend.write (id, value);
             drafts.remove (id);
         } catch (Error e) {
             var window = get_root () as Gtk.Window;
@@ -305,5 +320,32 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
         // Re-fetch the daemon's cached settings, including after a failed write.
         yield read_settings ();
         set_busy (false);
+    }
+
+    internal void edit_for_test (string id, string value) {
+        entries.lookup (id).text = value;
+    }
+
+    internal string? draft_for_test (string id) {
+        return drafts.lookup (id);
+    }
+
+    internal bool can_apply_for_test (string id) {
+        var button = apply_buttons.lookup (id);
+        return button != null && button.sensitive;
+    }
+
+    internal bool has_conflict_for_test (string id) {
+        var label = conflicts.lookup (id);
+        return label != null && label.visible;
+    }
+
+    internal string? value_for_test (string id) {
+        var entry = entries.lookup (id);
+        return entry != null ? entry.text : null;
+    }
+
+    internal async void apply_for_test (string id) {
+        yield save (id, drafts.lookup (id));
     }
 }

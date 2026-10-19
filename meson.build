@@ -44,4 +44,5 @@ add_project_arguments(vala_flags, language: 'vala')
 
 subdir('data')
 subdir('src')
+subdir('tests')
 subdir('po')
