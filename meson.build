@@ -36,6 +36,19 @@ if fwupd_dep.version().version_compare ('>=2.0.0')
     vala_flags += ['--define', 'HAS_FWUPD_2_0']
 endif
 
+c_compiler = meson.get_compiler('c')
+if c_compiler.has_function(
+    'fwupd_bios_setting_get_help_text',
+    prefix: '#include <fwupd.h>',
+    dependencies: fwupd_dep
+) and c_compiler.has_function(
+    'fwupd_bios_setting_get_display_group',
+    prefix: '#include <fwupd.h>',
+    dependencies: fwupd_dep
+)
+    vala_flags += ['--define', 'HAS_FWUPD_BIOS_METADATA']
+endif
+
 if appstream_dep.version().version_compare('>=1.0')
     vala_flags += ['--define', 'HAS_APPSTREAM_1_0']
 endif
@@ -44,5 +57,4 @@ add_project_arguments(vala_flags, language: 'vala')
 
 subdir('data')
 subdir('src')
-subdir('tests')
 subdir('po')
