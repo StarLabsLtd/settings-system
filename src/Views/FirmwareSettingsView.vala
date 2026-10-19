@@ -32,6 +32,10 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
                 load.begin ();
             }
         });
+        shown.connect (() => {
+            page_visible = true;
+            reload_if_needed ();
+        });
         hiding.connect (() => {
             page_visible = false;
             cancel_operation ();
@@ -200,7 +204,11 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
                 add_setting (setting, parent, pending_edits, this);
             }
 
-            pending_edits.foreach_remove ((id, value) => editable_settings.lookup (id) == null);
+            pending_edits.foreach ((id, value) => {
+                if (editable_settings.lookup (id) == null) {
+                    add_unavailable_draft (id, value);
+                }
+            });
 
             status_label.label = settings_box.get_first_child () == null
                 ? _("Firmware settings are not available on this device.")
@@ -308,6 +316,31 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
         settings_box.append (box);
     }
 
+    private void add_unavailable_draft (string id, string value) {
+        var box = new Gtk.Box (VERTICAL, 6);
+        box.append (new Gtk.Label (id) { xalign = 0, wrap = true });
+        box.append (new Gtk.Label (value) { xalign = 0, wrap = true, selectable = true });
+        box.append (new Gtk.Label (
+            _("This pending value cannot currently be applied because the setting is read-only or unavailable.")
+        ) { xalign = 0, wrap = true });
+        var discard_button = new Gtk.Button.with_label (_("Discard")) { halign = START };
+        var view = WeakRef (this);
+        var draft = WeakRef (box);
+        discard_button.clicked.connect (() => {
+            var page = view.get () as FirmwareSettingsView;
+            if (page != null) {
+                page.pending_edits.remove (id);
+                var row = draft.get () as Gtk.Box;
+                if (row != null) {
+                    page.settings_box.remove (row);
+                }
+                page.update_apply_button ();
+            }
+        });
+        box.append (discard_button);
+        settings_box.append (box);
+    }
+
     [CCode (cname = "fwupd_bios_setting_get_possible_values")]
     private static extern unowned GenericArray<weak string> get_possible_values (Fwupd.BiosSetting setting);
 
@@ -394,7 +427,7 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
                     status_label.label = _("Authentication is required to change firmware settings.");
                     return;
                 }
-                if (!authorization.get_retains_authorization ()) {
+                if (authorization.get_temporary_authorization_id () == null) {
                     status_label.label = _("This system cannot retain authorization to change firmware settings.");
                     return;
                 }
