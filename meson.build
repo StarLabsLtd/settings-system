@@ -49,6 +49,14 @@ if c_compiler.has_function(
     vala_flags += ['--define', 'HAS_FWUPD_BIOS_METADATA']
 endif
 
+if c_compiler.has_function(
+    'fwupd_client_get_pending_reboot',
+    prefix: '#include <fwupd.h>',
+    dependencies: fwupd_dep
+)
+    vala_flags += ['--define', 'HAS_FWUPD_PENDING_REBOOT']
+endif
+
 if appstream_dep.version().version_compare('>=1.0')
     vala_flags += ['--define', 'HAS_APPSTREAM_1_0']
 endif
