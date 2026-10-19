@@ -86,7 +86,7 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
             yield client.connect_async (null);
             yield client.set_feature_flags_async (Fwupd.FeatureFlags.ALLOW_AUTHENTICATION, null);
             var settings = yield client.get_bios_settings_async (null);
-            var present = new HashTable<string, bool> (str_hash, str_equal);
+            var present = new HashTable<string, string> (str_hash, str_equal);
             foreach (var setting in settings) {
                 // fwupd exposes this status even when other values are hidden.
                 if (setting.get_name () == "pending_reboot") {
@@ -95,7 +95,7 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
                 }
 
                 if (setting.get_id () != null) {
-                    present.insert (setting.get_id (), true);
+                    present.insert (setting.get_id (), setting.get_id ());
                 }
                 add_setting (setting);
             }
