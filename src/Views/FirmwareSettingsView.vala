@@ -8,6 +8,7 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
     private Gtk.Label status_label;
     private Gtk.Label reboot_label;
     private Gtk.Button refresh_button;
+    private HashTable<string, string> drafts = new HashTable<string, string> (str_hash, str_equal);
     private bool busy;
 
     construct {
@@ -85,6 +86,7 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
             yield client.connect_async (null);
             yield client.set_feature_flags_async (Fwupd.FeatureFlags.ALLOW_AUTHENTICATION, null);
             var settings = yield client.get_bios_settings_async (null);
+            var present = new HashTable<string, bool> (str_hash, str_equal);
             foreach (var setting in settings) {
                 // fwupd exposes this status even when other values are hidden.
                 if (setting.get_name () == "pending_reboot") {
@@ -92,7 +94,15 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
                     continue;
                 }
 
+                if (setting.get_id () != null) {
+                    present.insert (setting.get_id (), true);
+                }
                 add_setting (setting);
+            }
+            foreach (unowned string id in drafts.get_keys ()) {
+                if (!present.contains (id)) {
+                    add_unavailable_draft (id, drafts.lookup (id));
+                }
             }
 
             status_label.label = settings_box.get_first_child () == null
@@ -105,7 +115,9 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
 
     private void add_setting (Fwupd.BiosSetting setting) {
         var current = setting.get_current_value ();
-        var editable = !setting.get_read_only () && current != null && setting.get_id () != null;
+        var id = setting.get_id ();
+        var editable = !setting.get_read_only () && current != null && id != null;
+        var draft = id != null ? drafts.lookup (id) : null;
         var box = new Gtk.Box (VERTICAL, 6);
         var name_label = new Gtk.Label (setting.get_name () ?? setting.get_id ()) {
             xalign = 0,
@@ -122,6 +134,11 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
         var controls = new Gtk.Box (HORIZONTAL, 6);
         Gtk.Entry? entry = null;
         Gtk.DropDown? dropdown = null;
+        var conflict_label = new Gtk.Label ("") {
+            xalign = 0,
+            wrap = true,
+            visible = false
+        };
 
         if (editable && setting.get_kind () == Fwupd.BiosSettingKind.ENUMERATION) {
             var values = new Gtk.StringList (null);
@@ -129,9 +146,15 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
             var possible = setting.get_possible_values ();
             for (uint i = 0; i < possible.length; i++) {
                 values.append (possible[i]);
-                if (possible[i] == current) {
+                if (possible[i] == (draft ?? current)) {
                     selected = i;
                 }
+            }
+            if (draft != null && selected == Gtk.INVALID_LIST_POSITION) {
+                values.append (draft);
+                selected = possible.length;
+                conflict_label.label = _("The pending value is no longer allowed by the firmware.");
+                conflict_label.visible = true;
             }
             dropdown = new Gtk.DropDown (values, null) {
                 selected = selected,
@@ -142,7 +165,7 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
         } else if (editable && (setting.get_kind () == Fwupd.BiosSettingKind.INTEGER ||
                                setting.get_kind () == Fwupd.BiosSettingKind.STRING)) {
             entry = new Gtk.Entry () {
-                text = current,
+                text = draft ?? current,
                 hexpand = true
             };
             entry.update_relation (Gtk.AccessibleRelation.LABELLED_BY, name_label, null, -1);
@@ -155,12 +178,16 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
                     setting.get_lower_bound ().to_string (), setting.get_upper_bound ().to_string ());
             box.append (new Gtk.Label (constraints) { xalign = 0, wrap = true });
         } else {
-            controls.append (new Gtk.Label (current ?? _("Unavailable")) {
+            controls.append (new Gtk.Label (draft ?? current ?? _("Unavailable")) {
                 xalign = 0,
                 wrap = true,
                 selectable = true
             });
             box.append (new Gtk.Label (_("Not Editable")) { xalign = 0 });
+            if (draft != null) {
+                conflict_label.label = _("This pending value cannot be applied because the setting is now read-only or unavailable.");
+                conflict_label.visible = true;
+            }
         }
 
         if (entry != null || dropdown != null) {
@@ -169,13 +196,33 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
             controls.append (apply_button);
             if (entry != null) {
                 entry.changed.connect (() => {
-                    apply_button.sensitive = entry.text != current && valid_value (setting, entry.text);
+                    var valid = valid_value (setting, entry.text);
+                    conflict_label.label = valid ? "" : _("The pending value conflicts with the current firmware constraints.");
+                    conflict_label.visible = !valid;
+                    apply_button.sensitive = entry.text != current && valid;
+                    if (entry.text == current) {
+                        drafts.remove (id);
+                    } else {
+                        drafts.insert (id, entry.text);
+                    }
                 });
+                entry.changed ();
             } else {
                 dropdown.notify["selected"].connect (() => {
                     var item = dropdown.selected_item as Gtk.StringObject;
-                    apply_button.sensitive = item != null && item.string != current;
+                    var valid = item != null && item.string in setting.get_possible_values ();
+                    conflict_label.label = valid ? "" : _("The pending value is no longer allowed by the firmware.");
+                    conflict_label.visible = !valid;
+                    apply_button.sensitive = valid && item.string != current;
+                    if (item != null) {
+                        if (item.string == current) {
+                            drafts.remove (id);
+                        } else {
+                            drafts.insert (id, item.string);
+                        }
+                    }
                 });
+                dropdown.notify_property ("selected");
             }
 
             apply_button.clicked.connect (() => {
@@ -188,6 +235,18 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
         }
 
         box.append (controls);
+        box.append (conflict_label);
+        settings_box.append (box);
+    }
+
+    private void add_unavailable_draft (string id, string value) {
+        var box = new Gtk.Box (VERTICAL, 6);
+        box.append (new Gtk.Label (id) { xalign = 0, wrap = true });
+        box.append (new Gtk.Label (value) { xalign = 0, wrap = true, selectable = true });
+        box.append (new Gtk.Label (_("This pending value cannot be applied because the setting is no longer available.")) {
+            xalign = 0,
+            wrap = true
+        });
         settings_box.append (box);
     }
 
@@ -226,6 +285,7 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
             var changes = new HashTable<string, string> (str_hash, str_equal);
             changes.insert (id, value);
             yield client.modify_bios_setting_async ((owned) changes, null);
+            drafts.remove (id);
         } catch (Error e) {
             var window = get_root () as Gtk.Window;
             if (window != null && window.visible) {
