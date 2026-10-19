@@ -187,7 +187,7 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
 
                 var parent = settings_box;
 #if HAS_FWUPD_BIOS_METADATA
-                var group = setting.get_display_group ();
+                var group = setting.get_parent ();
                 if (group != null && group != "") {
                     parent = groups.lookup (group);
                     if (parent == null) {

@@ -42,7 +42,7 @@ if c_compiler.has_function(
     prefix: '#include <fwupd.h>',
     dependencies: fwupd_dep
 ) and c_compiler.has_function(
-    'fwupd_bios_setting_get_display_group',
+    'fwupd_bios_setting_get_parent',
     prefix: '#include <fwupd.h>',
     dependencies: fwupd_dep
 )
