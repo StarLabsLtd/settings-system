@@ -29,6 +29,10 @@ Run `meson` to configure the build environment and then `ninja` to build
     cd build
     ninja
 
+Driver management requires the UbuntuDrivers backend in elementary Settings Daemon.
+When that backend is not built, configure System Settings with `-Dubuntu_drivers=false`
+to omit the Drivers page and its search and settings links. The option defaults to true.
+
 To install, use `ninja install`
 
     sudo ninja install

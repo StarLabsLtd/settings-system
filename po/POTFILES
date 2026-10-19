@@ -1,9 +1,10 @@
 src/Plug.vala
 src/Views/DriversView.vala
 src/Views/FirmwareReleaseView.vala
-src/Views/FirmwareView.vala
 src/Views/FirmwareSettingsView.vala
+src/Views/FirmwareView.vala
 src/Views/HardwareView.vala
 src/Views/OperatingSystemView.vala
+src/Views/SecurityView.vala
 src/Widgets/FirmwareUpdateRow.vala
 src/Widgets/UpdateDetailsDialog.vala
