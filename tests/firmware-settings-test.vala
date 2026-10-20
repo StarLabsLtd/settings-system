@@ -72,6 +72,9 @@ private class TestBackend : About.FirmwareSettingsBackend {
             var value = changes.lookup (setting.get_id ());
             if (value != null && (result != PARTIAL || setting.get_id () == "A")) {
                 setting.set_current_value (value);
+                if (result == PARTIAL) {
+                    setting.set_read_only (true);
+                }
             }
         }
         if (result == PARTIAL) {
@@ -121,16 +124,16 @@ private async void write_scenario () {
     backend.settings = { a, b };
     var view = yield create_view (backend);
 
-    // One-shot and permanent authorization both reach the single fwupd batch
-    // request; the editor has no separate write-authorization operation.
-    view.edit_for_test ("A", "one-shot");
+    // The editor reaches one batch request without a separate write-
+    // authorization operation. Polkit authorization is not simulated here.
+    view.edit_for_test ("A", "first-write");
     yield view.apply_for_test ();
     assert (backend.write_count == 1);
     assert (backend.last_changes.size () == 1);
-    assert (backend.last_changes.lookup ("A") == "one-shot");
+    assert (backend.last_changes.lookup ("A") == "first-write");
     assert (view.draft_for_test ("A") == null);
 
-    view.edit_for_test ("A", "permanent");
+    view.edit_for_test ("A", "second-write");
     yield view.apply_for_test ();
     assert (backend.write_count == 2);
     assert (view.draft_for_test ("A") == null);
@@ -158,8 +161,24 @@ private async void write_scenario () {
     backend.next_result = PARTIAL;
     yield view.apply_for_test ();
     assert (a.get_current_value () == "rejected-a");
+    assert (a.get_read_only ());
     assert (view.draft_for_test ("A") == null);
     assert (view.draft_for_test ("B") == "rejected-b");
+    assert (view.can_apply_for_test ());
+
+    yield view.apply_for_test ();
+    assert (view.draft_for_test ("B") == null);
+
+    a.set_read_only (false);
+    yield view.load ();
+    view.edit_for_test ("A", "authoritative-refresh");
+    a.set_current_value ("authoritative-refresh");
+    a.set_read_only (true);
+    yield view.load ();
+    assert (view.draft_for_test ("A") == null);
+    a.set_read_only (false);
+
+    view.edit_for_test ("B", "navigation-b");
 
     backend.hold_enable = true;
     backend.enable_started = false;
@@ -188,8 +207,8 @@ private async void write_scenario () {
     view.set_visible_for_test (false);
     backend.hold_write = false;
     while (!completed) yield next_iteration ();
-    assert (b.get_current_value () == "rejected-b");
-    assert (view.draft_for_test ("B") == "rejected-b");
+    assert (b.get_current_value () == "navigation-b");
+    assert (view.draft_for_test ("B") == "navigation-b");
     view.set_visible_for_test (true);
     yield view.load ();
     assert (view.draft_for_test ("B") == null);
@@ -200,33 +219,39 @@ private async void draft_scenario () {
     var a = string_setting ("A", "old-a");
     var text = string_setting ("text", "old", 16);
     var number = integer_setting ("number", "1", 100);
+    var locked = string_setting ("locked", "old-locked");
     string[] choices = { "Auto", "Enabled", "Disabled" };
     var choice = enum_setting ("choice", "Auto", choices);
-    backend.settings = { a, text, number, choice };
+    backend.settings = { a, text, number, locked, choice };
     var view = yield create_view (backend);
 
     view.edit_for_test ("A", "new-a");
     view.edit_for_test ("text", "draft");
     view.edit_for_test ("number", "10");
+    view.edit_for_test ("locked", "pending-locked");
     view.select_for_test ("choice", "Disabled");
     yield view.load ();
     assert (view.draft_for_test ("A") == "new-a");
     assert (view.draft_for_test ("text") == "draft");
     assert (view.draft_for_test ("number") == "10");
+    assert (view.draft_for_test ("locked") == "pending-locked");
     assert (view.draft_for_test ("choice") == "Disabled");
 
     text.set_upper_bound (3);
     number.set_upper_bound (5);
     string[] changed_choices = { "Auto", "Enabled" };
     var changed_choice = enum_setting ("choice", "Auto", changed_choices);
-    backend.settings = { a, text, number, changed_choice };
+    locked.set_read_only (true);
+    backend.settings = { a, text, number, locked, changed_choice };
     yield view.load ();
     assert (view.displayed_draft_for_test ("text") == "draft");
     assert (view.conflict_for_test ("text"));
     assert (view.displayed_draft_for_test ("number") == "10");
     assert (view.conflict_for_test ("number"));
-    assert (view.displayed_draft_for_test ("choice") == "Disabled");
+    assert (view.displayed_draft_for_test ("choice") == "Pending value: Disabled");
     assert (view.conflict_for_test ("choice"));
+    assert (view.displayed_draft_for_test ("locked") == "pending-locked");
+    assert (view.conflict_for_test ("locked"));
     assert (!view.can_apply_for_test ());
 
     view.edit_for_test ("text", "new");
@@ -236,6 +261,9 @@ private async void draft_scenario () {
     assert (!view.conflict_for_test ("number"));
     assert (!view.conflict_for_test ("choice"));
     assert (view.draft_for_test ("A") == "new-a");
+    assert (!view.can_apply_for_test ());
+
+    view.discard_for_test ("locked");
     assert (view.can_apply_for_test ());
 
     view.select_for_test ("choice", "Auto");
@@ -243,7 +271,7 @@ private async void draft_scenario () {
     view.select_for_test ("choice", "Enabled");
     string[] final_choices = { "Auto" };
     changed_choice = enum_setting ("choice", "Auto", final_choices);
-    backend.settings = { a, text, number, changed_choice };
+    backend.settings = { a, text, number, locked, changed_choice };
     yield view.load ();
     assert (view.conflict_for_test ("choice"));
     view.discard_for_test ("choice");
@@ -256,11 +284,46 @@ private async void draft_scenario () {
     assert (view.conflict_for_test ("text"));
     assert (!view.can_apply_for_test ());
 
-    backend.settings = { a, text, changed_choice };
+    backend.settings = { a, text, locked, changed_choice };
     yield view.load ();
     assert (view.displayed_draft_for_test ("number") == "5");
     assert (view.conflict_for_test ("number"));
     assert (!view.can_apply_for_test ());
+}
+
+private async void lifetime_scenario () {
+    var backend = new TestBackend ();
+    var text = string_setting ("text", "old");
+    string[] choices = { "Auto", "Enabled" };
+    var choice = enum_setting ("choice", "Auto", choices);
+    backend.settings = { text, choice };
+    var view = yield create_view (backend);
+
+    for (uint i = 0; i < 4; i++) {
+        view.edit_for_test ("text", "draft-%u".printf (i));
+        view.select_for_test ("choice", "Enabled");
+        view.discard_for_test ("text");
+        view.discard_for_test ("choice");
+
+        Object? entry = view.control_for_test ("text");
+        Object? dropdown = view.control_for_test ("choice");
+        Object? conflict = view.conflict_label_for_test ("text");
+        Object? discard = view.discard_button_for_test ("choice");
+        var entry_ref = WeakRef (entry);
+        var dropdown_ref = WeakRef (dropdown);
+        var conflict_ref = WeakRef (conflict);
+        var discard_ref = WeakRef (discard);
+        entry = dropdown = conflict = discard = null;
+
+        yield view.load ();
+        for (uint iteration = 0; iteration < 4; iteration++) {
+            yield next_iteration ();
+        }
+        assert (entry_ref.get () == null);
+        assert (dropdown_ref.get () == null);
+        assert (conflict_ref.get () == null);
+        assert (discard_ref.get () == null);
+    }
 }
 
 public int main (string[] args) {
@@ -278,6 +341,14 @@ public int main (string[] args) {
         var loop = new MainLoop ();
         draft_scenario.begin ((obj, result) => {
             draft_scenario.end (result);
+            loop.quit ();
+        });
+        loop.run ();
+    });
+    Test.add_func ("/firmware-settings/row-lifetimes", () => {
+        var loop = new MainLoop ();
+        lifetime_scenario.begin ((obj, result) => {
+            lifetime_scenario.end (result);
             loop.quit ();
         });
         loop.run ();

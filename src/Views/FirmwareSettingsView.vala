@@ -247,12 +247,13 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
     private static void add_setting (Fwupd.BiosSetting setting, Gtk.Box settings_box,
                                      HashTable<string, string> pending, FirmwareSettingsView owner) {
         var current = setting.get_current_value ();
-        var editable = !setting.get_read_only () && current != null && setting.get_id () != null;
+        var id = setting.get_id ();
+        if (id != null && current != null && pending.lookup (id) == current) {
+            pending.remove (id);
+        }
+        var editable = !setting.get_read_only () && current != null && id != null;
         if (editable) {
-            owner.editable_settings.insert (setting.get_id (), setting);
-            if (pending.lookup (setting.get_id ()) == current) {
-                pending.remove (setting.get_id ());
-            }
+            owner.editable_settings.insert (id, setting);
         }
         var box = new Gtk.Box (VERTICAL, 6);
         var name_label = new Gtk.Label (setting.get_description () ?? setting.get_name () ?? setting.get_id ()) {
@@ -323,25 +324,39 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
             box.append (new Gtk.Label (_("Not Editable")) { xalign = 0 });
         }
 
+        var entry_ref = WeakRef (entry);
+        var dropdown_ref = WeakRef (dropdown);
+        var pending_value_ref = WeakRef (pending_value_label);
+        var conflict_ref = WeakRef (conflict_label);
+        var discard_ref = WeakRef (discard_button);
+
         if (entry != null) {
             entry.changed.connect (() => {
                 var page = view.get () as FirmwareSettingsView;
-                if (page != null) {
-                    page.stage_edit (setting, entry.text);
+                var input = entry_ref.get () as Gtk.Entry;
+                var pending_label = pending_value_ref.get () as Gtk.Label;
+                var conflict = conflict_ref.get () as Gtk.Label;
+                var discard = discard_ref.get () as Gtk.Button;
+                if (page != null && input != null && conflict != null && discard != null) {
+                    page.stage_edit (setting, input.text);
                     update_draft_conflict (
-                        setting, entry.text, pending_value_label, conflict_label, discard_button
+                        setting, input.text, pending_label, conflict, discard
                     );
                 }
             });
         } else if (dropdown != null) {
             dropdown.notify["selected"].connect (() => {
                 var page = view.get () as FirmwareSettingsView;
-                var selected = dropdown.selected_item as Gtk.StringObject;
-                if (page != null) {
+                var selector = dropdown_ref.get () as Gtk.DropDown;
+                var pending_label = pending_value_ref.get () as Gtk.Label;
+                var conflict = conflict_ref.get () as Gtk.Label;
+                var discard = discard_ref.get () as Gtk.Button;
+                var selected = selector?.selected_item as Gtk.StringObject;
+                if (page != null && selector != null && conflict != null && discard != null) {
                     page.stage_edit (setting, selected != null ? selected.string : null);
                     update_draft_conflict (
                         setting, selected != null ? selected.string : null,
-                        pending_value_label, conflict_label, discard_button
+                        pending_label, conflict, discard
                     );
                 }
             });
@@ -352,22 +367,27 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
             update_draft_conflict (setting, draft, pending_value_label, conflict_label, discard_button);
             discard_button.clicked.connect (() => {
                 var page = view.get () as FirmwareSettingsView;
-                if (page == null) {
+                var input = entry_ref.get () as Gtk.Entry;
+                var selector = dropdown_ref.get () as Gtk.DropDown;
+                var pending_label = pending_value_ref.get () as Gtk.Label;
+                var conflict = conflict_ref.get () as Gtk.Label;
+                var discard = discard_ref.get () as Gtk.Button;
+                if (page == null || conflict == null || discard == null) {
                     return;
                 }
                 page.pending_edits.remove (setting.get_id ());
-                if (entry != null) {
-                    entry.text = current;
-                } else if (dropdown != null) {
+                if (input != null) {
+                    input.text = current;
+                } else if (selector != null) {
                     unowned var possible = get_possible_values (setting);
                     for (uint i = 0; i < possible.length; i++) {
                         if (possible[i] == current) {
-                            dropdown.selected = i;
+                            selector.selected = i;
                             break;
                         }
                     }
                 }
-                update_draft_conflict (setting, null, pending_value_label, conflict_label, discard_button);
+                update_draft_conflict (setting, null, pending_label, conflict, discard);
                 page.update_apply_button ();
             });
             if (pending_value_label != null) {
@@ -609,7 +629,7 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
     internal string? displayed_draft_for_test (string id) {
         var label = test_draft_values.lookup (id);
         if (label != null && label.visible) {
-            return pending_edits.lookup (id);
+            return label.label;
         }
         var entry = test_entries.lookup (id);
         if (entry != null) {
@@ -621,6 +641,22 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
             return selected != null ? selected.string : null;
         }
         return label != null ? label.label : null;
+    }
+
+    internal Object? control_for_test (string id) {
+        var entry = test_entries.lookup (id);
+        if (entry != null) {
+            return entry;
+        }
+        return test_dropdowns.lookup (id);
+    }
+
+    internal Object? conflict_label_for_test (string id) {
+        return test_conflicts.lookup (id);
+    }
+
+    internal Object? discard_button_for_test (string id) {
+        return test_discard_buttons.lookup (id);
     }
 
     internal bool conflict_for_test (string id) {
