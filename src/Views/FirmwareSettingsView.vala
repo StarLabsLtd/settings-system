@@ -3,7 +3,7 @@
  */
 
 public class About.FirmwareSettingsView : Adw.NavigationPage {
-    private Fwupd.Client client = new Fwupd.Client ();
+    private FirmwareSettingsBackend backend;
     private Gtk.Box settings_box;
     private Gtk.Label status_label;
     private Gtk.Label reboot_label;
@@ -15,15 +15,43 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
     private Cancellable? operation_cancellable;
     private HashTable<string, string> pending_edits = new HashTable<string, string> (str_hash, str_equal);
 
-    private HashTable<string, Fwupd.BiosSetting> editable_settings = new HashTable<string, Fwupd.BiosSetting> (str_hash, str_equal);
+    private HashTable<string, Fwupd.BiosSetting> editable_settings =
+        new HashTable<string, Fwupd.BiosSetting> (str_hash, str_equal);
+#if FIRMWARE_SETTINGS_TEST
+    private HashTable<string, Gtk.Entry> test_entries = new HashTable<string, Gtk.Entry> (str_hash, str_equal);
+    private HashTable<string, Gtk.DropDown> test_dropdowns = new HashTable<string, Gtk.DropDown> (str_hash, str_equal);
+    private HashTable<string, Gtk.Label> test_conflicts = new HashTable<string, Gtk.Label> (str_hash, str_equal);
+    private HashTable<string, Gtk.Label> test_draft_values = new HashTable<string, Gtk.Label> (str_hash, str_equal);
+    private HashTable<string, Gtk.Button> test_discard_buttons =
+        new HashTable<string, Gtk.Button> (str_hash, str_equal);
+#endif
 
-    construct {
+    public FirmwareSettingsView () {
+        backend = new FwupdFirmwareSettingsBackend ();
+        build_ui ();
+    }
+
+#if FIRMWARE_SETTINGS_TEST
+    internal FirmwareSettingsView.with_backend (FirmwareSettingsBackend backend) {
+        this.backend = backend;
+        build_ui ();
+    }
+#endif
+
+    private void build_ui () {
         title = _("Firmware Settings");
 
+#if FIRMWARE_SETTINGS_TEST
+        var back_button = new Gtk.Button.with_label (_("All Updates")) {
+            action_name = "navigation.pop",
+            halign = START
+        };
+#else
         var back_button = new Granite.BackButton (_("All Updates")) {
             action_name = "navigation.pop",
             halign = START
         };
+#endif
 
         refresh_button = new Gtk.Button.with_label (_("Refresh"));
         map.connect (() => {
@@ -64,11 +92,9 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
             xalign = 0,
             visible = false
         };
-#if HAS_FWUPD_PENDING_REBOOT
-        client.notify["pending-reboot"].connect (() => {
-            reboot_label.visible = client.get_pending_reboot ();
+        backend.pending_reboot_changed.connect (() => {
+            reboot_label.visible = backend.pending_reboot;
         });
-#endif
         settings_box = new Gtk.Box (VERTICAL, 12);
 
         var content = new Gtk.Box (VERTICAL, 12) {
@@ -131,57 +157,44 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
         }
     }
 
-    private async Polkit.AuthorizationResult authorize_settings (
-        Cancellable cancellable,
-        string action_id
-    ) throws Error {
-        var connection = yield Bus.get (BusType.SYSTEM, cancellable);
-        var subject = new Polkit.SystemBusName (connection.get_unique_name ());
-        var authority = yield Polkit.Authority.get_async (cancellable);
-        return yield authority.check_authorization (
-            subject,
-            action_id,
-            null,
-            Polkit.CheckAuthorizationFlags.ALLOW_USER_INTERACTION,
-            cancellable
-        );
-    }
-
     private async void read_settings (Cancellable cancellable) {
         while (settings_box.get_first_child () != null) {
             settings_box.remove (settings_box.get_first_child ());
         }
 
         editable_settings.remove_all ();
+#if FIRMWARE_SETTINGS_TEST
+        test_entries.remove_all ();
+        test_dropdowns.remove_all ();
+        test_conflicts.remove_all ();
+        test_draft_values.remove_all ();
+        test_discard_buttons.remove_all ();
+#endif
         status_label.label = _("Loading firmware settings…");
         reboot_label.visible = false;
 
         try {
-            yield client.connect_async (cancellable);
+            yield backend.connect_client (cancellable);
             if (cancellable.is_cancelled ()) {
                 return;
             }
-            var authorization = yield authorize_settings (
-                cancellable,
-                "org.freedesktop.fwupd.get-bios-settings"
-            );
-            if (!authorization.get_is_authorized ()) {
+            if (!(yield backend.authorize_read (cancellable))) {
                 status_label.label = _("Authentication is required to read firmware settings.");
                 return;
             }
             if (cancellable.is_cancelled ()) {
                 return;
             }
-            yield client.set_feature_flags_async (Fwupd.FeatureFlags.ALLOW_AUTHENTICATION, cancellable);
+            yield backend.enable_authentication (cancellable);
             if (cancellable.is_cancelled ()) {
                 return;
             }
-            var settings = yield client.get_bios_settings_async (cancellable);
+            var settings = yield backend.read (cancellable);
             if (cancellable.is_cancelled ()) {
                 return;
             }
 #if HAS_FWUPD_PENDING_REBOOT
-            reboot_label.visible = client.get_pending_reboot ();
+            reboot_label.visible = backend.pending_reboot;
 #endif
 #if HAS_FWUPD_BIOS_METADATA
             var groups = new HashTable<string, Gtk.Box> (str_hash, str_equal);
@@ -257,10 +270,14 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
 #endif
 
         var controls = new Gtk.Box (HORIZONTAL, 6);
-        unowned Gtk.Entry? entry = null;
-        unowned Gtk.DropDown? dropdown = null;
-        var value = setting.get_id () != null ? pending.lookup (setting.get_id ()) ?? current : current;
+        Gtk.Entry? entry = null;
+        Gtk.DropDown? dropdown = null;
+        var draft = setting.get_id () != null ? pending.lookup (setting.get_id ()) : null;
+        var value = draft ?? current;
         var view = WeakRef (owner);
+        Gtk.Label? pending_value_label = null;
+        var conflict_label = new Gtk.Label ("") { xalign = 0, wrap = true, visible = false };
+        var discard_button = new Gtk.Button.with_label (_("Discard")) { halign = START, visible = false };
 
         if (editable && setting.get_kind () == Fwupd.BiosSettingKind.ENUMERATION) {
             var values = new Gtk.StringList (null);
@@ -278,6 +295,7 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
                 hexpand = true
             };
             dropdown = selector;
+            pending_value_label = new Gtk.Label ("") { xalign = 0, wrap = true, visible = false };
             dropdown.update_relation (Gtk.AccessibleRelation.LABELLED_BY, name_label, null, -1);
             controls.append (dropdown);
         } else if (editable && (setting.get_kind () == Fwupd.BiosSettingKind.INTEGER ||
@@ -310,6 +328,9 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
                 var page = view.get () as FirmwareSettingsView;
                 if (page != null) {
                     page.stage_edit (setting, entry.text);
+                    update_draft_conflict (
+                        setting, entry.text, pending_value_label, conflict_label, discard_button
+                    );
                 }
             });
         } else if (dropdown != null) {
@@ -318,21 +339,68 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
                 var selected = dropdown.selected_item as Gtk.StringObject;
                 if (page != null) {
                     page.stage_edit (setting, selected != null ? selected.string : null);
+                    update_draft_conflict (
+                        setting, selected != null ? selected.string : null,
+                        pending_value_label, conflict_label, discard_button
+                    );
                 }
             });
         }
 
         box.append (controls);
+        if (editable) {
+            update_draft_conflict (setting, draft, pending_value_label, conflict_label, discard_button);
+            discard_button.clicked.connect (() => {
+                var page = view.get () as FirmwareSettingsView;
+                if (page == null) {
+                    return;
+                }
+                page.pending_edits.remove (setting.get_id ());
+                if (entry != null) {
+                    entry.text = current;
+                } else if (dropdown != null) {
+                    unowned var possible = get_possible_values (setting);
+                    for (uint i = 0; i < possible.length; i++) {
+                        if (possible[i] == current) {
+                            dropdown.selected = i;
+                            break;
+                        }
+                    }
+                }
+                update_draft_conflict (setting, null, pending_value_label, conflict_label, discard_button);
+                page.update_apply_button ();
+            });
+            if (pending_value_label != null) {
+                box.append (pending_value_label);
+            }
+            box.append (conflict_label);
+            box.append (discard_button);
+#if FIRMWARE_SETTINGS_TEST
+            if (entry != null) {
+                owner.test_entries.insert (setting.get_id (), entry);
+            } else if (dropdown != null) {
+                owner.test_dropdowns.insert (setting.get_id (), dropdown);
+            }
+            owner.test_conflicts.insert (setting.get_id (), conflict_label);
+            owner.test_discard_buttons.insert (setting.get_id (), discard_button);
+            if (pending_value_label != null) {
+                owner.test_draft_values.insert (setting.get_id (), pending_value_label);
+            }
+#endif
+        }
+
         settings_box.append (box);
     }
 
     private void add_unavailable_draft (string id, string value) {
         var box = new Gtk.Box (VERTICAL, 6);
         box.append (new Gtk.Label (id) { xalign = 0, wrap = true });
-        box.append (new Gtk.Label (value) { xalign = 0, wrap = true, selectable = true });
-        box.append (new Gtk.Label (
+        var value_label = new Gtk.Label (value) { xalign = 0, wrap = true, selectable = true };
+        box.append (value_label);
+        var conflict_label = new Gtk.Label (
             _("This pending value cannot currently be applied because the setting is read-only or unavailable.")
-        ) { xalign = 0, wrap = true });
+        ) { xalign = 0, wrap = true };
+        box.append (conflict_label);
         var discard_button = new Gtk.Button.with_label (_("Discard")) { halign = START };
         var view = WeakRef (this);
         var draft = WeakRef (box);
@@ -349,6 +417,30 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
         });
         box.append (discard_button);
         settings_box.append (box);
+#if FIRMWARE_SETTINGS_TEST
+        test_conflicts.insert (id, conflict_label);
+        test_draft_values.insert (id, value_label);
+        test_discard_buttons.insert (id, discard_button);
+#endif
+    }
+
+    private static void update_draft_conflict (Fwupd.BiosSetting setting, string? value,
+                                               Gtk.Label? pending_value_label, Gtk.Label label,
+                                               Gtk.Button discard_button) {
+        var invalid = value != null && value != setting.get_current_value () && !valid_value (setting, value);
+        if (pending_value_label != null) {
+            pending_value_label.label = invalid ? _("Pending value: %s").printf (value) : "";
+            pending_value_label.visible = invalid;
+        }
+        if (invalid && setting.get_kind () == Fwupd.BiosSettingKind.ENUMERATION) {
+            label.label = _("The pending value is no longer allowed by the firmware.");
+        } else if (invalid) {
+            label.label = _("The pending value conflicts with the current firmware constraints.");
+        } else {
+            label.label = "";
+        }
+        label.visible = invalid;
+        discard_button.visible = invalid;
     }
 
     [CCode (cname = "fwupd_bios_setting_get_possible_values")]
@@ -429,34 +521,17 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
             try {
                 var changes = new HashTable<string, string> (str_hash, str_equal);
                 pending_edits.foreach ((id, value) => changes.insert (id, value));
-                var authorization = yield authorize_settings (
-                    cancellable,
-                    "org.freedesktop.fwupd.set-bios-settings"
-                );
-                if (!authorization.get_is_authorized ()) {
-                    status_label.label = _("Authentication is required to change firmware settings.");
-                    return;
-                }
-                if (authorization.get_temporary_authorization_id () == null) {
-                    status_label.label = _("This system cannot retain authorization to change firmware settings.");
-                    return;
-                }
-                if (cancellable.is_cancelled ()) {
-                    return;
-                }
-                yield client.set_feature_flags_async (Fwupd.FeatureFlags.ALLOW_AUTHENTICATION, cancellable);
+                yield backend.enable_authentication (cancellable);
                 if (cancellable.is_cancelled ()) {
                     return;
                 }
                 // fwupd's authorization is server-side; cancellation here
                 // only abandons the reply, not a write already in progress.
                 operation_cancellable = null;
-                yield ((BiosSettingsClient) client).modify (changes, null);
-            } catch (Fwupd.Error.AUTH_FAILED e) {
+                yield backend.write (changes);
+            } catch (FirmwareSettingsError.AUTH_FAILED e) {
                 // Authorization fails before any writes; refreshing prompts again.
-                if (cancellable.is_cancelled ()) {
-                    return;
-                }
+                reload_pending = false;
                 status_label.label = _("Authorization is required to change firmware settings.");
                 return;
             } catch (Error e) {
@@ -498,12 +573,70 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
             reload_if_needed ();
         }
     }
-}
 
-// libfwupd serializes the table without consuming its container.
-[Compact]
-[CCode (cname = "FwupdClient", cheader_filename = "fwupd.h")]
-private extern class BiosSettingsClient {
-    [CCode (cname = "fwupd_client_modify_bios_setting_async", finish_name = "fwupd_client_modify_bios_setting_finish")]
-    public extern async bool modify (HashTable<string, string> changes, Cancellable? cancellable) throws Error;
+#if FIRMWARE_SETTINGS_TEST
+    internal void set_visible_for_test (bool visible) {
+        page_visible = visible;
+        if (!visible) {
+            cancel_operation ();
+        }
+    }
+
+    internal void edit_for_test (string id, string value) {
+        test_entries.lookup (id).text = value;
+    }
+
+    internal void select_for_test (string id, string value) {
+        var dropdown = test_dropdowns.lookup (id);
+        var model = dropdown.model as Gtk.StringList;
+        for (uint i = 0; i < model.get_n_items (); i++) {
+            if (model.get_string (i) == value) {
+                dropdown.selected = i;
+                return;
+            }
+        }
+        assert_not_reached ();
+    }
+
+    internal void discard_for_test (string id) {
+        test_discard_buttons.lookup (id).clicked ();
+    }
+
+    internal string? draft_for_test (string id) {
+        return pending_edits.lookup (id);
+    }
+
+    internal string? displayed_draft_for_test (string id) {
+        var label = test_draft_values.lookup (id);
+        if (label != null && label.visible) {
+            return pending_edits.lookup (id);
+        }
+        var entry = test_entries.lookup (id);
+        if (entry != null) {
+            return entry.text;
+        }
+        var dropdown = test_dropdowns.lookup (id);
+        if (dropdown != null) {
+            var selected = dropdown.selected_item as Gtk.StringObject;
+            return selected != null ? selected.string : null;
+        }
+        return label != null ? label.label : null;
+    }
+
+    internal bool conflict_for_test (string id) {
+        return test_conflicts.lookup (id)?.visible ?? false;
+    }
+
+    internal bool can_apply_for_test () {
+        return apply_button.sensitive;
+    }
+
+    internal string status_for_test () {
+        return status_label.label;
+    }
+
+    internal async void apply_for_test () {
+        yield save ();
+    }
+#endif
 }

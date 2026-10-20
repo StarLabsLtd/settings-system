@@ -2,6 +2,7 @@ plug_files = files(
     'Plug.vala',
     'DBus' / 'SystemUpdate.vala',
     'Interfaces/FirmwareClient.vala',
+    'Interfaces/FirmwareSettingsBackend.vala',
     'Interfaces/LoginManager.vala',
     'Utils/ARMPartDecoder.vala',
     'Views/FirmwareReleaseView.vala',
