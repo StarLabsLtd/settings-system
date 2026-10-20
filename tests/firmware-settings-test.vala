@@ -326,6 +326,43 @@ private async void lifetime_scenario () {
     }
 }
 
+#if HAS_FWUPD_2_0
+private uint count_labels (Gtk.Widget widget, string text) {
+    uint count = widget is Gtk.Label && ((Gtk.Label) widget).get_text () == text ? 1 : 0;
+    for (var child = widget.get_first_child (); child != null; child = child.get_next_sibling ()) {
+        count += count_labels (child, text);
+    }
+    return count;
+}
+
+private async void metadata_scenario () {
+    var first = string_setting ("A", "old-a");
+    var second = string_setting ("B", "old-b");
+    var metadata = new VariantBuilder (VariantType.VARDICT);
+    metadata.add ("{sv}", "DisplayGroup", new Variant.string ("Audio"));
+    metadata.add ("{sv}", "HelpText", new Variant.string ("Controls the speaker amplifier."));
+    var values = metadata.end ();
+    try {
+        assert (((Fwupd.Codec) first).from_variant (values));
+        assert (((Fwupd.Codec) second).from_variant (values));
+    } catch (Error e) {
+        error ("Cannot load firmware metadata: %s", e.message);
+    }
+
+    var retained = ((Fwupd.Codec) first).to_variant (Fwupd.CodecFlags.NONE);
+    if (retained.lookup_value ("DisplayGroup", null) == null) {
+        Test.skip ("fwupd does not expose BIOS setting metadata");
+        return;
+    }
+
+    var backend = new TestBackend ();
+    backend.settings = { first, second };
+    var view = yield create_view (backend);
+    assert (count_labels (view, "Audio") == 1);
+    assert (count_labels (view, "Controls the speaker amplifier.") == 2);
+}
+#endif
+
 public int main (string[] args) {
     Gtk.init ();
     Test.init (ref args);
@@ -353,5 +390,15 @@ public int main (string[] args) {
         });
         loop.run ();
     });
+#if HAS_FWUPD_2_0
+    Test.add_func ("/firmware-settings/metadata", () => {
+        var loop = new MainLoop ();
+        metadata_scenario.begin ((obj, result) => {
+            metadata_scenario.end (result);
+            loop.quit ();
+        });
+        loop.run ();
+    });
+#endif
     return Test.run ();
 }
