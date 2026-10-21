@@ -15,6 +15,7 @@ public class About.DriversView : Switchboard.SettingsPage {
 
     public DriversView () {
         Object (
+            header: _("Maintenance"),
             icon: new ThemedIcon ("application-x-firmware"),
             title: _("Drivers"),
             description: _("Broadcom® Wi-Fi adapters, NVIDIA® graphics, and some virtual machines may not function properly without additional drivers.")

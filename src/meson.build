@@ -1,19 +1,28 @@
 plug_files = files(
     'Plug.vala',
     'DBus' / 'SystemUpdate.vala',
-    'DBus' / 'Drivers.vala',
     'Interfaces/FirmwareClient.vala',
+    'Interfaces/FirmwareSettingsBackend.vala',
     'Interfaces/LoginManager.vala',
     'Utils/ARMPartDecoder.vala',
-    'Views' / 'DriversView.vala',
     'Views/FirmwareReleaseView.vala',
+    'Views/FirmwareSettingsView.vala',
     'Views/FirmwareView.vala',
     'Views/HardwareView.vala',
     'Views/OperatingSystemView.vala',
+    'Views/SecurityView.vala',
     'Widgets/FirmwareUpdateRow.vala',
-    'Widgets' / 'DriverRow.vala',
     'Widgets' / 'UpdateDetailsDialog.vala'
 )
+
+if get_option('ubuntu_drivers')
+    plug_files += files(
+        'DBus' / 'Drivers.vala',
+        'Views' / 'DriversView.vala',
+        'Widgets' / 'DriverRow.vala'
+    )
+    add_project_arguments('--define=UBUNTU_DRIVERS', language: 'vala')
+endif
 
 switchboard_dep = dependency('switchboard-3')
 switchboard_plugsdir = switchboard_dep.get_variable('plugsdir', pkgconfig_define: ['libdir', libdir])
