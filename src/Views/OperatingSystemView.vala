@@ -537,12 +537,21 @@ public class About.OperatingSystemView : Switchboard.SettingsPage {
 
                 try {
                     var details = yield update_proxy.get_update_details ();
-                    updates_description.label = dngettext (
-                        GETTEXT_PACKAGE,
-                        "%i update available (%s)",
-                        "%i updates available (%s)",
-                        details.packages.length
-                    ).printf (details.packages.length, GLib.format_size (details.size));
+                    if (details.size > 0) {
+                        updates_description.label = dngettext (
+                            GETTEXT_PACKAGE,
+                            "%i update available (%s)",
+                            "%i updates available (%s)",
+                            details.packages.length
+                        ).printf (details.packages.length, GLib.format_size (details.size));
+                    } else {
+                        updates_description.label = dngettext (
+                            GETTEXT_PACKAGE,
+                            "%i update available",
+                            "%i updates available",
+                            details.packages.length
+                        ).printf (details.packages.length);
+                    }
 
                     if (Pk.Info.SECURITY in details.info) {
                         updates_image.icon_name = "software-update-urgent";
