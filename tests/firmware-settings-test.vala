@@ -16,6 +16,7 @@ private async void next_iteration () {
 }
 
 private class TestBackend : About.FirmwareSettingsBackend {
+    internal About.FirmwareSettingsAccess access = READ_WRITE;
     internal Fwupd.BiosSetting[] settings = {};
     internal WriteResult next_result = SUCCESS;
     internal bool hold_enable;
@@ -31,8 +32,8 @@ private class TestBackend : About.FirmwareSettingsBackend {
     internal override async void connect_client (Cancellable cancellable) throws Error {
     }
 
-    internal override async bool authorize_read (Cancellable cancellable) throws Error {
-        return true;
+    internal override async About.FirmwareSettingsAccess authorize (Cancellable cancellable) throws Error {
+        return access;
     }
 
     internal override async void enable_authentication (Cancellable cancellable) throws Error {
@@ -115,6 +116,28 @@ private async About.FirmwareSettingsView create_view (TestBackend backend) {
     view.set_visible_for_test (true);
     yield view.load ();
     return view;
+}
+
+private async void access_scenario () {
+    var backend = new TestBackend ();
+    backend.settings = { string_setting ("A", "old-a") };
+    var view = yield create_view (backend);
+    view.edit_for_test ("A", "draft-a");
+    backend.access = READ_ONLY;
+    yield view.load ();
+    assert (view.control_for_test ("A") == null);
+    assert (view.draft_for_test ("A") == "draft-a");
+    assert (!view.can_apply_for_test ());
+    var reads = backend.read_count;
+    backend.access = DENIED;
+    yield view.load ();
+    assert (backend.read_count == reads);
+    assert (view.draft_for_test ("A") == "draft-a");
+    assert (!view.can_apply_for_test ());
+    backend.access = READ_WRITE;
+    yield view.load ();
+    assert (view.control_for_test ("A") != null);
+    assert (view.can_apply_for_test ());
 }
 
 private async void write_scenario () {
@@ -366,6 +389,14 @@ private async void metadata_scenario () {
 public int main (string[] args) {
     Gtk.init ();
     Test.init (ref args);
+    Test.add_func ("/firmware-settings/access", () => {
+        var loop = new MainLoop ();
+        access_scenario.begin ((obj, result) => {
+            access_scenario.end (result);
+            loop.quit ();
+        });
+        loop.run ();
+    });
     Test.add_func ("/firmware-settings/write-lifecycle", () => {
         var loop = new MainLoop ();
         write_scenario.begin ((obj, result) => {

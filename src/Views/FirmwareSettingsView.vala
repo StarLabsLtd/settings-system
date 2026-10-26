@@ -178,7 +178,8 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
             if (cancellable.is_cancelled ()) {
                 return;
             }
-            if (!(yield backend.authorize_read (cancellable))) {
+            var access = yield backend.authorize (cancellable);
+            if (access == FirmwareSettingsAccess.DENIED) {
                 status_label.label = _("Authentication is required to read firmware settings.");
                 return;
             }
@@ -224,7 +225,7 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
                     }
                 }
 #endif
-                add_setting (setting, parent, pending_edits, this);
+                add_setting (setting, parent, pending_edits, this, access == FirmwareSettingsAccess.READ_WRITE);
             }
 
             pending_edits.foreach ((id, value) => {
@@ -245,13 +246,13 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
     }
 
     private static void add_setting (Fwupd.BiosSetting setting, Gtk.Box settings_box,
-                                     HashTable<string, string> pending, FirmwareSettingsView owner) {
+                                     HashTable<string, string> pending, FirmwareSettingsView owner, bool write_authorized) {
         var current = setting.get_current_value ();
         var id = setting.get_id ();
         if (id != null && current != null && pending.lookup (id) == current) {
             pending.remove (id);
         }
-        var editable = !setting.get_read_only () && current != null && id != null;
+        var editable = write_authorized && !setting.get_read_only () && current != null && id != null;
         if (editable) {
             owner.editable_settings.insert (id, setting);
         }

@@ -5,10 +5,16 @@ internal abstract class About.FirmwareSettingsBackend : Object {
     internal abstract bool pending_reboot { get; }
 
     internal abstract async void connect_client (Cancellable cancellable) throws Error;
-    internal abstract async bool authorize_read (Cancellable cancellable) throws Error;
+    internal abstract async FirmwareSettingsAccess authorize (Cancellable cancellable) throws Error;
     internal abstract async void enable_authentication (Cancellable cancellable) throws Error;
     internal abstract async Fwupd.BiosSetting[] read (Cancellable cancellable) throws Error;
     internal abstract async void write (HashTable<string, string> changes) throws Error;
+}
+
+internal enum About.FirmwareSettingsAccess {
+    DENIED,
+    READ_ONLY,
+    READ_WRITE
 }
 
 internal errordomain About.FirmwareSettingsError {
@@ -38,18 +44,40 @@ internal class About.FwupdFirmwareSettingsBackend : FirmwareSettingsBackend {
         yield client.connect_async (cancellable);
     }
 
-    internal override async bool authorize_read (Cancellable cancellable) throws Error {
+    internal override async FirmwareSettingsAccess authorize (Cancellable cancellable) throws Error {
         var connection = yield Bus.get (BusType.SYSTEM, cancellable);
         var subject = new Polkit.SystemBusName (connection.get_unique_name ());
         var authority = yield Polkit.Authority.get_async (cancellable);
         var result = yield authority.check_authorization (
             subject,
-            "org.freedesktop.fwupd.get-bios-settings",
+            "org.freedesktop.fwupd.set-bios-settings",
             null,
-            Polkit.CheckAuthorizationFlags.ALLOW_USER_INTERACTION,
+            Polkit.CheckAuthorizationFlags.NONE,
             cancellable
         );
-        return result.get_is_authorized ();
+        var read_flags = Polkit.CheckAuthorizationFlags.ALLOW_USER_INTERACTION;
+        if (!result.get_is_authorized () && result.get_is_challenge ()) {
+            read_flags = Polkit.CheckAuthorizationFlags.NONE;
+            result = yield authority.check_authorization (
+                subject,
+                "org.freedesktop.fwupd.set-bios-settings",
+                null,
+                Polkit.CheckAuthorizationFlags.ALLOW_USER_INTERACTION,
+                cancellable
+            );
+        }
+        if (result.get_is_authorized ()) {
+            return FirmwareSettingsAccess.READ_WRITE;
+        }
+
+        result = yield authority.check_authorization (
+            subject,
+            "org.freedesktop.fwupd.get-bios-settings",
+            null,
+            read_flags,
+            cancellable
+        );
+        return result.get_is_authorized () ? FirmwareSettingsAccess.READ_ONLY : FirmwareSettingsAccess.DENIED;
     }
 
     internal override async void enable_authentication (Cancellable cancellable) throws Error {
