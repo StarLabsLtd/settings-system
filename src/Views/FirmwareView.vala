@@ -28,9 +28,11 @@ public class About.FirmwareView : Switchboard.SettingsPage {
     private Gtk.ListBox update_list;
     private uint num_updates = 0;
     private Fwupd.Client fwupd_client;
+    private Gtk.Button firmware_settings_button;
 
     public FirmwareView () {
         Object (
+            header: _("Maintenance"),
             icon: new ThemedIcon ("application-x-firmware"),
             title: _("Firmware"),
             description: _("Firmware updates provided by device manufacturers can improve performance and fix critical security issues.")
@@ -80,12 +82,27 @@ public class About.FirmwareView : Switchboard.SettingsPage {
 
         child = frame;
 
+        var firmware_settings_view = new FirmwareSettingsView ();
+        navigation_view.add (firmware_settings_view);
+        firmware_settings_button = add_button (_("Firmware Settings…"));
+        firmware_settings_button.visible = false;
+        firmware_settings_button.clicked.connect (() => {
+            if (stack.visible_child != navigation_view) {
+                return;
+            }
+            if (navigation_view.visible_page != firmware_settings_view) {
+                navigation_view.push (firmware_settings_view);
+            }
+            firmware_settings_view.load.begin ();
+        });
+
         if (LoginManager.get_instance ().can_reboot_to_firmware_setup ()) {
             var reboot_to_firmware_setup_button = add_button (_("Restart to Firmware Setup…"));
             reboot_to_firmware_setup_button.clicked.connect (reboot_to_firmware_setup_clicked);
         }
 
         fwupd_client = new Fwupd.Client ();
+        update_settings_button.begin ();
         fwupd_client.device_added.connect (on_device_added);
         fwupd_client.device_removed.connect (on_device_removed);
 
@@ -96,6 +113,26 @@ public class About.FirmwareView : Switchboard.SettingsPage {
         firmware_release_view.update.connect ((device, release) => {
             update.begin (device, release);
         });
+    }
+
+    private async void update_settings_button () {
+        bool available = false;
+        try {
+            yield fwupd_client.connect_async (null);
+            var settings = yield fwupd_client.get_bios_settings_async (null);
+            foreach (var setting in settings) {
+                if (setting.get_name () != "pending_reboot") {
+                    available = true;
+                    break;
+                }
+            }
+        } catch (Error e) {
+            // Keep the settings page reachable so the user can retry.
+            available = true;
+            warning ("Could not check firmware settings: %s", e.message);
+        }
+
+        firmware_settings_button.visible = available;
     }
 
     private async void update_list_view () {
