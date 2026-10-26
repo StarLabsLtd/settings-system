@@ -126,6 +126,8 @@ public class About.FirmwareView : Switchboard.SettingsPage {
                     break;
                 }
             }
+        } catch (Fwupd.Error.NOT_SUPPORTED e) {
+            debug ("Firmware settings are unavailable: %s", e.message);
         } catch (Error e) {
             // Keep the settings page reachable so the user can retry.
             available = true;
