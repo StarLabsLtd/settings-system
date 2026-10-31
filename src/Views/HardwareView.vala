@@ -693,8 +693,12 @@ public class About.HardwareView : Switchboard.SettingsPage {
 
         string static_hostname = generate_hostname (hostname);
         try {
-            yield system_interface.set_pretty_hostname (hostname, true);
-            yield system_interface.set_static_hostname (static_hostname, true);
+            if (!hostname_permission.allowed &&
+                !(yield hostname_permission.acquire_async (null))) {
+                return false;
+            }
+            yield system_interface.set_pretty_hostname (hostname, false);
+            yield system_interface.set_static_hostname (static_hostname, false);
             return true;
         } catch (Error e) {
             warning (e.message);
