@@ -499,7 +499,7 @@ public class About.OperatingSystemView : Switchboard.SettingsPage {
                 break;
             case ERROR:
                 updates_image.icon_name = "dialog-error";
-                updates_title.label = _("Failed to download updates");
+                updates_title.label = _("Could Not Update the System");
                 updates_description.label = _("Manually refreshing updates may resolve the issue");
                 button_stack.visible_child_name = "refresh";
                 break;
@@ -525,8 +525,8 @@ public class About.OperatingSystemView : Switchboard.SettingsPage {
 
         if (current_state.state == ERROR) {
             var message_dialog = new Granite.MessageDialog (
-                _("Failed to download updates"),
-                _("This may have been caused by sideloaded or manually compiled software, a third-party software source, or a package manager error. Manually refreshing updates may resolve the issue."),
+                _("Could Not Update the System"),
+                _("The update service reported an error. Manually refreshing updates may resolve the issue."),
                 new ThemedIcon ("dialog-error")
             ) {
                 transient_for = (Gtk.Window) get_root (),
