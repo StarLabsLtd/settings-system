@@ -19,66 +19,10 @@
 */
 
 public class About.OperatingSystemView : Switchboard.SettingsPage {
-    private static string _bug_url;
-    private static string bug_url {
-        get {
-            if (_bug_url == null) {
-                _bug_url = Environment.get_os_info (GLib.OsInfoKey.BUG_REPORT_URL);
-
-                if (_bug_url == null) {
-                    _bug_url = "https://docs.elementary.io/contributor-guide/feedback/reporting-issues";
-                }
-            }
-
-            return _bug_url;
-        }
-    }
-
-    private static string _documentation_url;
-    private static string documentation_url {
-        get {
-            if (_documentation_url == null) {
-                _documentation_url = Environment.get_os_info (GLib.OsInfoKey.DOCUMENTATION_URL);
-
-                if (_documentation_url == null) {
-                    _documentation_url = "https://elementary.io/docs/learning-the-basics";
-                }
-            }
-
-            return _documentation_url;
-        }
-    }
-
-    private static string _website_url;
-    private static string website_url {
-        get {
-            if (_website_url == null) {
-                _website_url = Environment.get_os_info (GLib.OsInfoKey.HOME_URL);
-
-                if (_website_url == null) {
-                    _website_url = "https://elementary.io";
-                }
-            }
-
-            return _website_url;
-        }
-    }
-
-
-    private static string _support_url;
-    private static string support_url {
-        get {
-            if (_support_url == null) {
-                _support_url = Environment.get_os_info (GLib.OsInfoKey.SUPPORT_URL);
-
-                if (_support_url == null) {
-                    _support_url = "https://elementary.io/support";
-                }
-            }
-
-            return _support_url;
-        }
-    }
+    private string bug_url;
+    private string documentation_url;
+    private string website_url;
+    private string support_url;
 
     private uint64 download_size_remaining = 0;
     private uint64 download_size_max = 0;
@@ -96,7 +40,6 @@ public class About.OperatingSystemView : Switchboard.SettingsPage {
     private Gtk.Label updates_description;
     private Gtk.Revealer details_button_revealer;
     private Gtk.Stack button_stack;
-    private SponsorUsRow sponsor_us_row;
 
     public OperatingSystemView () {
         Object (
@@ -107,6 +50,11 @@ public class About.OperatingSystemView : Switchboard.SettingsPage {
     }
 
     construct {
+        bug_url = Environment.get_os_info (GLib.OsInfoKey.BUG_REPORT_URL) ?? "";
+        documentation_url = Environment.get_os_info (GLib.OsInfoKey.DOCUMENTATION_URL) ?? "";
+        website_url = Environment.get_os_info (GLib.OsInfoKey.HOME_URL) ?? "";
+        support_url = Environment.get_os_info (GLib.OsInfoKey.SUPPORT_URL) ?? "";
+
         add_css_class ("operating-system-view");
 
         var style_provider = new Gtk.CssProvider ();
@@ -276,49 +224,6 @@ public class About.OperatingSystemView : Switchboard.SettingsPage {
         updates_list.get_first_child ().focusable = false;
         updates_list.get_last_child ().focusable = false;
 
-        sponsor_us_row = new SponsorUsRow ("https://github.com/sponsors/elementary");
-
-        var sponsor_list = new Gtk.ListBox () {
-            margin_bottom = 12,
-            margin_top = 12,
-            valign = CENTER,
-            show_separators = true,
-            selection_mode = NONE,
-            hexpand = true
-        };
-        sponsor_list.add_css_class ("boxed-list");
-        sponsor_list.add_css_class (Granite.STYLE_CLASS_RICH_LIST);
-
-        sponsor_list.append (sponsor_us_row);
-
-        var thebasics_link = new LinkRow (
-            documentation_url,
-            _("Basics Guide"),
-            "text-x-generic-symbolic",
-            "green"
-        );
-
-        var support_link = new LinkRow (
-            support_url,
-            _("Get Help"),
-            "help-contents-symbolic",
-            "blue"
-        );
-
-        var website_link = new LinkRow (
-            website_url,
-            _("Our Website"),
-            "view-reader-symbolic",
-            "slate"
-        );
-
-        var getinvolved_link = new LinkRow (
-            "https://elementary.io/get-involved",
-            _("Get Involved"),
-            "applications-development-symbolic",
-            "purple"
-        );
-
         var links_list = new Gtk.ListBox () {
             margin_bottom = 12,
             margin_top = 12,
@@ -329,13 +234,38 @@ public class About.OperatingSystemView : Switchboard.SettingsPage {
         };
         links_list.add_css_class ("boxed-list");
         links_list.add_css_class (Granite.STYLE_CLASS_RICH_LIST);
-        links_list.append (thebasics_link);
-        links_list.append (support_link);
-        links_list.append (website_link);
-        links_list.append (getinvolved_link);
+
+        if (documentation_url != "") {
+            links_list.append (new LinkRow (
+                documentation_url,
+                _("Basics Guide"),
+                "text-x-generic-symbolic",
+                "green"
+            ));
+        }
+
+        if (support_url != "") {
+            links_list.append (new LinkRow (
+                support_url,
+                _("Get Help"),
+                "help-contents-symbolic",
+                "blue"
+            ));
+        }
+
+        if (website_url != "") {
+            links_list.append (new LinkRow (
+                website_url,
+                _("Our Website"),
+                "view-reader-symbolic",
+                "slate"
+            ));
+        }
 
         var settings_restore_button = add_start_button (_("Restore Default Settings"));
         var bug_button = add_button (_("Send Feedback"));
+
+        bug_button.visible = bug_url != "";
 
         software_grid = new Gtk.Grid () {
             column_spacing = 32,
@@ -349,8 +279,9 @@ public class About.OperatingSystemView : Switchboard.SettingsPage {
 
         software_grid.attach (kernel_version_label, 1, 2);
         software_grid.attach (updates_list, 1, 3);
-        software_grid.attach (sponsor_list, 1, 4);
-        software_grid.attach (links_list, 1, 5);
+        if (links_list.get_first_child () != null) {
+            software_grid.attach (links_list, 1, 4);
+        }
 
         child = software_grid;
 
@@ -359,23 +290,11 @@ public class About.OperatingSystemView : Switchboard.SettingsPage {
 
         settings_restore_button.clicked.connect (settings_restore_clicked);
 
-        bug_button.clicked.connect (() => {
-            var appinfo = new GLib.DesktopAppInfo ("io.elementary.feedback.desktop");
-            if (appinfo != null) {
-                try {
-                    appinfo.launch (null, null);
-                } catch (Error e) {
-                    critical (e.message);
-                    launch_uri (bug_url);
-                }
-            } else {
+        if (bug_url != "") {
+            bug_button.clicked.connect (() => {
                 launch_uri (bug_url);
-            }
-        });
-
-        sponsor_list.row_activated.connect ((row) => {
-            launch_uri (((SponsorUsRow) row).uri);
-        });
+            });
+        }
 
         links_list.row_activated.connect ((row) => {
             launch_uri (((LinkRow) row).uri);
@@ -435,14 +354,6 @@ public class About.OperatingSystemView : Switchboard.SettingsPage {
         } catch (Error e) {
             warning ("Failed to load logo file: %s", e.message);
         }
-    }
-
-    public void load_sponsors_goal (GLib.Cancellable cancellable) {
-        if (sponsor_us_row.was_loaded) {
-            return;
-        }
-
-        sponsor_us_row.get_goal_progress (cancellable);
     }
 
     private async void get_upstream_release () {
@@ -780,121 +691,6 @@ public class About.OperatingSystemView : Switchboard.SettingsPage {
 
             child = box;
             add_css_class ("link");
-        }
-    }
-
-    private class SponsorUsRow : Gtk.ListBoxRow {
-        public string uri { get; construct; }
-
-        private Gtk.Label target_label;
-        private Gtk.LevelBar levelbar;
-        private Gtk.Revealer details_revealer;
-
-        public SponsorUsRow (string uri) {
-            Object (
-                uri: uri
-            );
-        }
-
-        public bool was_loaded {
-            get {
-                return details_revealer.reveal_child;
-            }
-        }
-
-        class construct {
-            set_accessible_role (LINK);
-        }
-
-        construct {
-            var image = new Gtk.Image.from_icon_name ("face-heart-symbolic");
-            image.add_css_class (Granite.CssClass.ACCENT);
-            image.add_css_class ("pink");
-
-            var main_label = new Gtk.Label (_("Sponsor Us")) {
-                halign = START,
-                hexpand = true
-            };
-
-            target_label = new Gtk.Label (null) {
-                halign = START
-            };
-            target_label.add_css_class (Granite.CssClass.DIM);
-            target_label.add_css_class (Granite.CssClass.SMALL);
-
-            levelbar = new Gtk.LevelBar ();
-            levelbar.add_css_class (Granite.STYLE_CLASS_FLAT);
-            levelbar.add_css_class ("pink");
-
-            var details_box = new Gtk.Box (VERTICAL, 0);
-            details_box.append (target_label);
-            details_box.append (levelbar);
-
-            details_revealer = new Gtk.Revealer () {
-                child = details_box,
-                reveal_child = false
-            };
-
-            var link_image = new Gtk.Image.from_icon_name ("adw-external-link-symbolic");
-
-            var grid = new Gtk.Grid () {
-                valign = CENTER
-            };
-            grid.attach (image, 0, 0, 1, 2);
-            grid.attach (main_label, 1, 0);
-            grid.attach (details_revealer, 1, 1);
-            grid.attach (link_image, 2, 0, 2, 2);
-
-            child = grid;
-            add_css_class ("link");
-        }
-
-        public void get_goal_progress (GLib.Cancellable cancellable) {
-            var message = new Soup.Message ("GET", "https://elementary.io/api/sponsors_goal");
-            var session = new Soup.Session ();
-            session.send_and_read_async.begin (message, GLib.Priority.DEFAULT, cancellable , (obj, res) => {
-                try {
-                    var bytes = session.send_and_read_async.end (res);
-
-                    var output = (string) bytes.get_data ();
-                    if (output == null) {
-                        return;
-                    }
-
-                    var parser = new Json.Parser ();
-                    parser.load_from_data (output);
-
-                    var root = parser.get_root ();
-                    if (root.get_node_type () != OBJECT) {
-                        return;
-                    }
-
-                    int64 percent_complete = root.get_object ().get_int_member ("percent");
-                    double target_value = root.get_object ().get_double_member ("target");
-
-                    var animation_target = new Adw.CallbackAnimationTarget ((val) => {
-                        ///TRANSLATORS: first value is a percentage, second value is an amount in USD
-                        target_label.label = _("%.0f%% towards $%'5.0f per month goal").printf (
-                            Math.round (val),
-                            target_value
-                        );
-
-                        levelbar.value = val / 100.0;
-                    });
-
-                    var animation = new Adw.TimedAnimation (
-                        this, 0, percent_complete, 1000,
-                        animation_target
-                    ) {
-                        easing = EASE_IN_OUT_QUAD
-                    };
-
-                    details_revealer.reveal_child = true;
-                    animation.play ();
-                } catch (Error e) {
-                    critical (e.message);
-                }
-            });
         }
     }
 }

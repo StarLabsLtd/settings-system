@@ -30,7 +30,6 @@ public class About.Plug : Switchboard.Plug {
     private OperatingSystemView operating_system_view;
     private Gtk.Paned hpaned;
     private Gtk.Stack stack;
-    private GLib.Cancellable sponsors_goal_cancellable;
 
     public Plug () {
         GLib.Intl.bindtextdomain (About.GETTEXT_PACKAGE, About.LOCALEDIR);
@@ -112,16 +111,9 @@ public class About.Plug : Switchboard.Plug {
 
     public override void shown () {
         operating_system_view.load_logo.begin ();
-
-        sponsors_goal_cancellable = new GLib.Cancellable ();
-        operating_system_view.load_sponsors_goal (sponsors_goal_cancellable);
     }
 
-    public override void hidden () {
-        if (sponsors_goal_cancellable != null) {
-            sponsors_goal_cancellable.cancel ();
-        }
-    }
+    public override void hidden () {}
 
     public override void search_callback (string location) {
         switch (location) {
@@ -149,14 +141,29 @@ public class About.Plug : Switchboard.Plug {
 
         search_results.set ("%s → %s".printf (display_name, _("Operating System")), OPERATING_SYSTEM);
         search_results.set ("%s → %s → %s".printf (display_name, _("Operating System"), _("Automatic Updates")), OPERATING_SYSTEM);
-        search_results.set ("%s → %s → %s".printf (display_name, _("Operating System"), _("Basics Guide")), OPERATING_SYSTEM);
-        search_results.set ("%s → %s → %s".printf (display_name, _("Operating System"), _("Get Help")), OPERATING_SYSTEM);
-        search_results.set ("%s → %s → %s".printf (display_name, _("Operating System"), _("Get Involved or Sponsor Us")), OPERATING_SYSTEM);
-        search_results.set ("%s → %s → %s".printf (display_name, _("Operating System"), _("Get Support")), OPERATING_SYSTEM);
-        search_results.set ("%s → %s → %s".printf (display_name, _("Operating System"), _("Our Website")), OPERATING_SYSTEM);
-        search_results.set ("%s → %s → %s".printf (display_name, _("Operating System"), _("Report a Problem")), OPERATING_SYSTEM);
         search_results.set ("%s → %s → %s".printf (display_name, _("Operating System"), _("Restore Default Settings")), OPERATING_SYSTEM);
-        search_results.set ("%s → %s → %s".printf (display_name, _("Operating System"), _("Send Feedback")), OPERATING_SYSTEM);
+
+        string documentation_url = Environment.get_os_info (GLib.OsInfoKey.DOCUMENTATION_URL) ?? "";
+        if (documentation_url != "") {
+            search_results.set ("%s → %s → %s".printf (display_name, _("Operating System"), _("Basics Guide")), OPERATING_SYSTEM);
+        }
+
+        string support_url = Environment.get_os_info (GLib.OsInfoKey.SUPPORT_URL) ?? "";
+        if (support_url != "") {
+            search_results.set ("%s → %s → %s".printf (display_name, _("Operating System"), _("Get Help")), OPERATING_SYSTEM);
+            search_results.set ("%s → %s → %s".printf (display_name, _("Operating System"), _("Get Support")), OPERATING_SYSTEM);
+        }
+
+        string website_url = Environment.get_os_info (GLib.OsInfoKey.HOME_URL) ?? "";
+        if (website_url != "") {
+            search_results.set ("%s → %s → %s".printf (display_name, _("Operating System"), _("Our Website")), OPERATING_SYSTEM);
+        }
+
+        string bug_url = Environment.get_os_info (GLib.OsInfoKey.BUG_REPORT_URL) ?? "";
+        if (bug_url != "") {
+            search_results.set ("%s → %s → %s".printf (display_name, _("Operating System"), _("Report a Problem")), OPERATING_SYSTEM);
+            search_results.set ("%s → %s → %s".printf (display_name, _("Operating System"), _("Send Feedback")), OPERATING_SYSTEM);
+        }
 
         search_results.set ("%s → %s".printf (display_name, _("Hardware")), HARDWARE);
         search_results.set ("%s → %s → %s".printf (display_name, _("Hardware"), _("Device name")), HARDWARE);
