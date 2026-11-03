@@ -6,10 +6,14 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
     private FirmwareSettingsBackend backend;
     private Gtk.Box settings_box;
     private Gtk.Label status_label;
+    private Gtk.Label pending_label;
+    private Gtk.Stack groups_stack;
+    private Gtk.StackSidebar groups_sidebar;
     private Gtk.Label reboot_label;
     private Gtk.Button refresh_button;
     private Gtk.Button apply_button;
     private bool busy;
+    private string? apply_error;
     private bool page_visible;
     private bool reload_pending;
     private Cancellable? operation_cancellable;
@@ -41,18 +45,6 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
     private void build_ui () {
         title = _("Firmware Settings");
 
-#if FIRMWARE_SETTINGS_TEST
-        var back_button = new Gtk.Button.with_label (_("All Updates")) {
-            action_name = "navigation.pop",
-            halign = START
-        };
-#else
-        var back_button = new Granite.BackButton (_("All Updates")) {
-            action_name = "navigation.pop",
-            halign = START
-        };
-#endif
-
         refresh_button = new Gtk.Button.with_label (_("Refresh"));
         map.connect (() => {
             page_visible = true;
@@ -74,9 +66,8 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
         });
         var header_bar = new Gtk.HeaderBar () {
             show_title_buttons = false,
-            title_widget = new Gtk.Label (title)
+            title_widget = new Gtk.Box (HORIZONTAL, 0)
         };
-        header_bar.pack_start (back_button);
         header_bar.pack_end (refresh_button);
         apply_button = new Gtk.Button.with_label (_("Apply")) { sensitive = false };
         apply_button.add_css_class (Granite.STYLE_CLASS_SUGGESTED_ACTION);
@@ -105,10 +96,17 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
         };
         content.append (status_label);
         content.append (reboot_label);
-        content.append (settings_box);
+        pending_label = new Gtk.Label ("") { wrap = true, xalign = 0 };
+        content.append (pending_label);
+        groups_stack = new Gtk.Stack ();
+        groups_sidebar = new Gtk.StackSidebar () { stack = groups_stack, visible = false };
+        content.append (groups_stack);
+        var layout = new Gtk.Box (HORIZONTAL, 12);
+        layout.append (groups_sidebar);
+        layout.append (new Gtk.ScrolledWindow () { child = content, hexpand = true });
 
         var toolbarview = new Adw.ToolbarView () {
-            content = new Gtk.ScrolledWindow () { child = content },
+            content = layout,
             top_bar_style = RAISED_BORDER
         };
         toolbarview.add_top_bar (header_bar);
@@ -137,7 +135,7 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
 
     private void set_busy (bool value) {
         busy = value;
-        settings_box.sensitive = !value;
+        groups_stack.sensitive = !value;
         refresh_button.sensitive = !value;
         update_apply_button ();
     }
@@ -158,9 +156,13 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
     }
 
     private async void read_settings (Cancellable cancellable) {
-        while (settings_box.get_first_child () != null) {
-            settings_box.remove (settings_box.get_first_child ());
+        var selected_group = groups_stack.visible_child_name;
+        while (groups_stack.get_first_child () != null) {
+            groups_stack.remove (groups_stack.get_first_child ());
         }
+        settings_box = new Gtk.Box (VERTICAL, 12);
+        groups_stack.add_titled (settings_box, "", _("Other Settings"));
+        groups_sidebar.visible = false;
 
         editable_settings.remove_all ();
 #if FIRMWARE_SETTINGS_TEST
@@ -173,6 +175,7 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
         status_label.label = _("Loading firmware settings…");
         reboot_label.visible = false;
 
+        error_quark ();
         try {
             yield backend.connect_client (cancellable);
             if (cancellable.is_cancelled ()) {
@@ -201,13 +204,11 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
             var groups = new HashTable<string, Gtk.Box> (str_hash, str_equal);
 #endif
             foreach (var setting in settings) {
-#if !HAS_FWUPD_PENDING_REBOOT
-                // fwupd exposes this status even when other values are hidden.
+                // This is status, never an editable setting.
                 if (setting.get_name () == "pending_reboot") {
                     reboot_label.visible |= setting.get_current_value () == "1";
                     continue;
                 }
-#endif
 
                 var parent = settings_box;
 #if HAS_FWUPD_BIOS_METADATA
@@ -216,12 +217,10 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
                     parent = groups.lookup (group);
                     if (parent == null) {
                         parent = new Gtk.Box (VERTICAL, 12);
-                        var heading = new Gtk.Label (group) { xalign = 0, wrap = true };
-                        heading.add_css_class (Granite.STYLE_CLASS_H3_LABEL);
-                        heading.add_css_class ("heading");
+                        var heading = new Granite.HeaderLabel (group);
                         parent.append (heading);
                         groups.insert (group, parent);
-                        settings_box.append (parent);
+                        groups_stack.add_titled (parent, group, group);
                     }
                 }
 #endif
@@ -234,15 +233,46 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
                 }
             });
 
-            status_label.label = settings_box.get_first_child () == null
+            var group_count = update_groups (selected_group);
+            status_label.label = group_count == 0
                 ? _("Firmware settings are not available on this device.")
-                : _("Authentication may be required to change firmware settings.");
+                : _("Values are reported by firmware and may differ from the running configuration. Edits are only saved when you Apply.");
+        } catch (Fwupd.Error.NOT_SUPPORTED e) {
+            status_label.label = _("Firmware settings are not supported on this device.");
         } catch (Error e) {
             if (cancellable.is_cancelled ()) {
                 return;
             }
             status_label.label = _("Unable to load firmware settings: %s").printf (e.message);
+        } finally {
+            if (apply_error != null) {
+                status_label.label = apply_error + "\n\n" + status_label.label;
+            }
         }
+    }
+
+    private uint update_groups (string? selected_group = null) {
+        groups_stack.get_page (settings_box).visible = settings_box.get_first_child () != null;
+        uint count = 0;
+        Gtk.Widget? first = null;
+        var pages = groups_stack.get_pages ();
+        for (uint i = 0; i < pages.get_n_items (); i++) {
+            var page = (Gtk.StackPage) pages.get_item (i);
+            if (page.visible) {
+                if (first == null) {
+                    first = page.child;
+                }
+                count++;
+            }
+        }
+        groups_sidebar.visible = count > 1;
+        var selected = selected_group != null ? groups_stack.get_child_by_name (selected_group) : null;
+        if (selected != null && groups_stack.get_page (selected).visible) {
+            groups_stack.visible_child = selected;
+        } else if (first != null) {
+            groups_stack.visible_child = first;
+        }
+        return count;
     }
 
     private static void add_setting (Fwupd.BiosSetting setting, Gtk.Box settings_box,
@@ -271,6 +301,11 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
         }
 #endif
 
+        var reported = new Gtk.Label (_("Reported value: %s").printf (current ?? _("Unavailable"))) {
+            xalign = 0, wrap = true, selectable = true
+        };
+        reported.add_css_class (Granite.CssClass.DIM);
+        box.append (reported);
         var controls = new Gtk.Box (HORIZONTAL, 6);
         Gtk.Entry? entry = null;
         Gtk.DropDown? dropdown = null;
@@ -363,7 +398,12 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
             });
         }
 
-        box.append (controls);
+        box.hexpand = true;
+        controls.hexpand = false;
+        controls.valign = CENTER;
+        var row = new Gtk.Box (HORIZONTAL, 18);
+        row.append (box);
+        row.append (controls);
         if (editable) {
             update_draft_conflict (setting, draft, pending_value_label, conflict_label, discard_button);
             discard_button.clicked.connect (() => {
@@ -410,7 +450,7 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
 #endif
         }
 
-        settings_box.append (box);
+        settings_box.append (row);
     }
 
     private void add_unavailable_draft (string id, string value) {
@@ -432,6 +472,7 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
                 var row = draft.get () as Gtk.Box;
                 if (row != null) {
                     page.settings_box.remove (row);
+                    page.update_groups ();
                 }
                 page.update_apply_button ();
             }
@@ -493,6 +534,12 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
             }
         }
         apply_button.sensitive = !busy && valid;
+        apply_button.label = pending_edits.size () > 0
+            ? _("Apply (%u)").printf (pending_edits.size ()) : _("Apply");
+        pending_label.label = pending_edits.size () > 0
+            ? ngettext ("%u pending change across all groups.", "%u pending changes across all groups.", pending_edits.size ())
+                .printf (pending_edits.size ())
+            : _("No pending changes.");
     }
 
     private static bool valid_value (Fwupd.BiosSetting setting, string value) {
@@ -538,6 +585,7 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
         operation_cancellable = cancellable;
         // Register fwupd's D-Bus errors before the first failed request.
         error_quark ();
+        apply_error = null;
         try {
             try {
                 var changes = new HashTable<string, string> (str_hash, str_equal);
@@ -559,6 +607,7 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
                 if (cancellable.is_cancelled ()) {
                     return;
                 }
+                apply_error = _("Unable to apply firmware settings: %s. Some changes may already have been saved. Review reported values before retrying.").printf (e.message);
                 var window = get_root () as Gtk.Window;
                 if (page_visible && window != null && window.visible) {
                     var dialog = new Granite.MessageDialog (

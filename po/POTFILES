@@ -1,6 +1,7 @@
 src/Plug.vala
 src/Views/DriversView.vala
 src/Views/FirmwareReleaseView.vala
+src/Views/FirmwareSettingsPage.vala
 src/Views/FirmwareSettingsView.vala
 src/Views/FirmwareView.vala
 src/Views/HardwareView.vala

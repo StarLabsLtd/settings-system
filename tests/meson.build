@@ -24,3 +24,21 @@ test(
     protocol: 'tap',
     suite: 'firmware-settings'
 )
+
+security_test = executable(
+    'security-test',
+    'security-test.vala',
+    meson.project_source_root() / 'src' / 'Views' / 'SecurityView.vala',
+    dependencies: [fwupd_dep, glib_dep, switchboard_dep, dependency('gtk4'),
+                   dependency('libadwaita-1'), dependency('granite-7')],
+    install: false
+)
+
+test(
+    'security presentation',
+    find_program('run-firmware-settings.sh'),
+    args: security_test,
+    env: ['GSETTINGS_BACKEND=memory', 'GTK_A11Y=none'],
+    protocol: 'tap',
+    suite: 'firmware-settings'
+)
