@@ -71,10 +71,37 @@ public int main (string[] args) {
         for (uint i = 2; i <= 5; i++) {
             assert ("level %u".printf (i) in About.SecurityView.hsi_description ("HSI:%u (v2.1.8)".printf (i)));
         }
-        assert ("runtime" in About.SecurityView.hsi_description ("HSI:3! (v2.1.8)"));
-        foreach (var id in new string[] {"HSI:INVALID", "", "HSI:99", "HSI:2garbage", "HSI:10"}) {
-            assert ("could not be determined" in About.SecurityView.hsi_description (id));
+        for (uint i = 0; i <= 5; i++) {
+            var id = "HSI:%u".printf (i);
+            var bare = About.SecurityView.hsi_description (id);
+            foreach (var suffix in new string[] {"", "!", " (v1.8.4)", "! (v2.1.8)", " (v2.2.1)", "! (v0.0.0)"}) {
+                var description = About.SecurityView.hsi_description (id + suffix);
+                assert (description.has_prefix (bare));
+                assert (!("could not be determined" in description));
+                assert (("runtime" in description) == suffix.has_prefix ("!"));
+            }
         }
+    });
+    Test.add_func ("/security/hsi-malformed-forms", () => {
+        var unknown = About.SecurityView.hsi_description ("HSI:INVALID");
+        foreach (var id in new string[] {
+            "", "HSI:99", "HSI:10", "HSI:6!", "HSI:2garbage", "HSI:2 garbage",
+            "HSI:2!garbage", "HSI:2!!", "HSI:2 !", "HSI:2U", "HSI:2A", "HSI:02",
+            "HSI:2 ", " HSI:2", "HSI:2\n", "HSI:2!\n", "HSI:2 (v2.1.8)\n",
+            "HSI:2 (v2.1)", "HSI:2 (v2.1.8", "HSI:2 (v2.1.8)garbage",
+            "HSI:2! (v2.1.8)garbage", "HSI:2 (v2.1.8)!", "HSI:2(v2.1.8)",
+            "HSI:2  (v2.1.8)", "HSI:2 (v2..8)", "HSI:2 (v-2.1.8)", "HSI:2 (v2.1.x)",
+            "HSI:2 (v2.1.8.1)", "HSI:INVALID!", "garbage!"
+        }) {
+            assert (About.SecurityView.hsi_description (id) == unknown);
+        }
+        // The complete untrusted value remains visible even when not interpreted.
+        var checks = new GenericArray<Fwupd.SecurityAttr> ();
+        checks.add (check ("Unknown", UNKNOWN));
+        var view = new About.SecurityView ();
+        var malformed = "HSI:2!garbage";
+        view.show_checks ((GenericArray<weak Fwupd.SecurityAttr>) checks, malformed, null, null);
+        assert (has_text (view, "Host Security ID: " + malformed + "\n" + unknown));
     });
     return Test.run ();
 }

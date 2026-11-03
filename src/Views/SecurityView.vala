@@ -236,30 +236,31 @@ public class About.SecurityView : Switchboard.SettingsPage {
     internal static string hsi_description (string hsi) {
         // Interpret only known IDs. Preserve the complete daemon value above.
         string description = _("The security level could not be determined.");
-        if (hsi.has_prefix ("HSI:") && hsi.length >= 5 &&
-            (hsi.length == 5 || hsi[5] == '!' || hsi[5] == ' ')) {
-            switch (hsi[4]) {
-                case '0':
-                    description = _("Basic security requirements are not met.");
-                    break;
-                case '1':
-                    description = _("Basic security requirements are met.");
-                    break;
-                case '2':
-                    description = _("HSI level 2 requirements are met.");
-                    break;
-                case '3':
-                    description = _("HSI level 3 requirements are met.");
-                    break;
-                case '4':
-                    description = _("HSI level 4 requirements are met.");
-                    break;
-                case '5':
-                    description = _("HSI level 5 requirements are met.");
-                    break;
-            }
+        // fwupd emits a level, optional runtime !, and optional version tuple.
+        if (!Regex.match_simple ("\\AHSI:[0-5]!?(?: \\(v[0-9]+\\.[0-9]+\\.[0-9]+\\))?\\z", hsi)) {
+            return description;
         }
-        if ("!" in hsi) {
+        switch (hsi[4]) {
+            case '0':
+                description = _("Basic security requirements are not met.");
+                break;
+            case '1':
+                description = _("Basic security requirements are met.");
+                break;
+            case '2':
+                description = _("HSI level 2 requirements are met.");
+                break;
+            case '3':
+                description = _("HSI level 3 requirements are met.");
+                break;
+            case '4':
+                description = _("HSI level 4 requirements are met.");
+                break;
+            case '5':
+                description = _("HSI level 5 requirements are met.");
+                break;
+        }
+        if (hsi.length > 5 && hsi[5] == '!') {
             description += " " + _("A runtime security issue was reported. Review the checks below.");
         }
         return description;
