@@ -155,6 +155,7 @@ private async void write_scenario () {
     assert (backend.last_changes.size () == 1);
     assert (backend.last_changes.lookup ("A") == "first-write");
     assert (view.draft_for_test ("A") == null);
+    assert ("reported by firmware" in view.status_for_test ());
 
     view.edit_for_test ("A", "second-write");
     yield view.apply_for_test ();
@@ -188,6 +189,7 @@ private async void write_scenario () {
     assert (view.draft_for_test ("A") == null);
     assert (view.draft_for_test ("B") == "rejected-b");
     assert (view.can_apply_for_test ());
+    assert ("Some changes may already have been saved" in view.status_for_test ());
 
     yield view.apply_for_test ();
     assert (view.draft_for_test ("B") == null);
@@ -227,6 +229,9 @@ private async void write_scenario () {
         completed = true;
     });
     while (!backend.write_started) yield next_iteration ();
+    var writes_in_progress = backend.write_count;
+    yield view.apply_for_test ();
+    assert (backend.write_count == writes_in_progress);
     view.set_visible_for_test (false);
     backend.hold_write = false;
     while (!completed) yield next_iteration ();
@@ -235,6 +240,24 @@ private async void write_scenario () {
     view.set_visible_for_test (true);
     yield view.load ();
     assert (view.draft_for_test ("B") == null);
+
+    view.edit_for_test ("B", "hidden-partial");
+    backend.next_result = PARTIAL;
+    backend.hold_write = true;
+    backend.write_started = false;
+    completed = false;
+    view.apply_for_test.begin ((obj, result) => {
+        view.apply_for_test.end (result);
+        completed = true;
+    });
+    while (!backend.write_started) yield next_iteration ();
+    view.set_visible_for_test (false);
+    backend.hold_write = false;
+    while (!completed) yield next_iteration ();
+    view.set_visible_for_test (true);
+    yield view.load ();
+    assert (view.draft_for_test ("B") == "hidden-partial");
+    assert ("Some changes may already have been saved" in view.status_for_test ());
 }
 
 private async void draft_scenario () {
@@ -358,6 +381,17 @@ private uint count_labels (Gtk.Widget widget, string text) {
     return count;
 }
 
+private Gtk.Stack? find_group_stack (Gtk.Widget widget) {
+    if (widget is Gtk.Stack && ((Gtk.Stack) widget).get_child_by_name ("Audio") != null) {
+        return (Gtk.Stack) widget;
+    }
+    for (var child = widget.get_first_child (); child != null; child = child.get_next_sibling ()) {
+        var found = find_group_stack (child);
+        if (found != null) return found;
+    }
+    return null;
+}
+
 private async void metadata_scenario () {
     var first = string_setting ("A", "old-a");
     var second = string_setting ("B", "old-b");
@@ -381,8 +415,43 @@ private async void metadata_scenario () {
     var backend = new TestBackend ();
     backend.settings = { first, second };
     var view = yield create_view (backend);
-    assert (count_labels (view, "Audio") == 1);
+    assert (find_group_stack (view) != null);
+    assert (find_group_stack (view).visible_child_name == "Audio");
     assert (count_labels (view, "Controls the speaker amplifier.") == 2);
+    var third = string_setting ("C", "old-c");
+    var other = new VariantBuilder (VariantType.VARDICT);
+    other.add ("{sv}", "DisplayGroup", new Variant.string ("Battery"));
+    try {
+        assert (((Fwupd.Codec) third).from_variant (other.end ()));
+    } catch (Error e) {
+        error ("Cannot load firmware metadata: %s", e.message);
+    }
+    backend.settings = {first, second, third};
+    yield view.load ();
+    var groups = find_group_stack (view);
+    assert (groups != null);
+    assert (!groups.get_page (groups.get_child_by_name ("")).visible);
+    view.edit_for_test ("A", "draft-a");
+    groups.visible_child_name = "Battery";
+    view.edit_for_test ("C", "draft-c");
+    yield view.load ();
+    assert (groups.visible_child_name == "Battery");
+    assert (view.can_apply_for_test ());
+    backend.hold_write = true;
+    var completed = false;
+    view.apply_for_test.begin ((obj, result) => {
+        view.apply_for_test.end (result);
+        completed = true;
+    });
+    while (!backend.write_started) yield next_iteration ();
+    assert (!groups.is_sensitive ());
+    assert (backend.last_changes.size () == 2);
+    assert (backend.last_changes.lookup ("A") == "draft-a");
+    assert (backend.last_changes.lookup ("C") == "draft-c");
+    backend.hold_write = false;
+    while (!completed) yield next_iteration ();
+    assert (view.draft_for_test ("A") == null);
+    assert (view.draft_for_test ("C") == null);
 }
 #endif
 

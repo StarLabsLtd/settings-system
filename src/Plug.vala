@@ -22,6 +22,7 @@ public class About.Plug : Switchboard.Plug {
     private const string OPERATING_SYSTEM = "operating-system";
     private const string HARDWARE = "hardware";
     private const string FIRMWARE = "firmware";
+    private const string FIRMWARE_SETTINGS = "firmware-settings";
     private const string SECURITY = "security";
 #if UBUNTU_DRIVERS
     private const string DRIVERS = "drivers";
@@ -40,6 +41,7 @@ public class About.Plug : Switchboard.Plug {
         settings.set ("about/os", OPERATING_SYSTEM);
         settings.set ("about/hardware", HARDWARE);
         settings.set ("about/firmware", FIRMWARE);
+        settings.set ("about/firmware/settings", FIRMWARE_SETTINGS);
 #if UBUNTU_DRIVERS
         settings.set ("about/drivers", DRIVERS);
 #endif
@@ -49,7 +51,7 @@ public class About.Plug : Switchboard.Plug {
             category: Category.SYSTEM,
             code_name: "io.elementary.settings.system",
             display_name: _("System"),
-            description: _("View operating system and hardware information"),
+            description: _("View system information and configure firmware settings"),
             icon: "application-x-firmware",
             supported_settings: settings
         );
@@ -65,6 +67,9 @@ public class About.Plug : Switchboard.Plug {
                 show_end_title_buttons = true
             };
             var security_view = new SecurityView () {
+                show_end_title_buttons = true
+            };
+            var firmware_settings_page = new FirmwareSettingsPage () {
                 show_end_title_buttons = true
             };
             var firmware_view = new FirmwareView () {
@@ -83,6 +88,8 @@ public class About.Plug : Switchboard.Plug {
             stack.add_named (hardware_view, HARDWARE);
             stack.add_named (security_view, SECURITY);
             stack.add_named (firmware_view, FIRMWARE);
+            stack.add_named (firmware_settings_page, FIRMWARE_SETTINGS);
+            firmware_view.open_settings.connect (() => stack.set_visible_child_name (FIRMWARE_SETTINGS));
 #if UBUNTU_DRIVERS
             stack.add_named (drivers_view, DRIVERS);
 #endif
@@ -120,6 +127,7 @@ public class About.Plug : Switchboard.Plug {
             case OPERATING_SYSTEM:
             case HARDWARE:
             case FIRMWARE:
+            case FIRMWARE_SETTINGS:
 #if UBUNTU_DRIVERS
             case DRIVERS:
 #endif
@@ -173,7 +181,9 @@ public class About.Plug : Switchboard.Plug {
         search_results.set ("%s → %s".printf (display_name, _("About This Device")), HARDWARE);
 
         search_results.set ("%s → %s".printf (display_name, _("Firmware")), FIRMWARE);
-        search_results.set ("%s → %s → %s".printf (display_name, _("Firmware"), _("Firmware Settings…")), FIRMWARE);
+        search_results.set ("%s → %s".printf (display_name, _("Firmware Settings")), FIRMWARE_SETTINGS);
+        search_results.set ("%s → %s".printf (display_name, _("BIOS Settings")), FIRMWARE_SETTINGS);
+        search_results.set ("%s → %s".printf (display_name, _("UEFI Settings")), FIRMWARE_SETTINGS);
         search_results.set ("%s → %s → %s".printf (display_name, _("Firmware"), _("Restart to Firmware Setup…")), FIRMWARE);
 
 #if UBUNTU_DRIVERS
