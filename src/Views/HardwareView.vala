@@ -173,12 +173,18 @@ public class About.HardwareView : Gtk.Box {
     private void on_hostname_entry_activate () {
         hostname_entry.secondary_icon_name = "process-working-symbolic";
         hostname_entry.add_css_class ("spin");
+        hostname_entry.sensitive = false;
 
         set_host_name.begin (hostname_entry.text, (obj, res) => {
-            set_host_name.end (res);
-            hostname_entry.secondary_icon_name = "process-completed-symbolic";
-            hostname_entry.secondary_icon_tooltip_text = _("Device name saved");
+            if (set_host_name.end (res)) {
+                hostname_entry.secondary_icon_name = "process-completed-symbolic";
+                hostname_entry.secondary_icon_tooltip_text = _("Device name saved");
+            } else {
+                hostname_entry.secondary_icon_name = "dialog-error-symbolic";
+                hostname_entry.secondary_icon_tooltip_text = _("Could not update device name");
+            }
             hostname_entry.remove_css_class ("spin");
+            hostname_entry.sensitive = has_hostname_permission ();
         });
     }
 
@@ -621,7 +627,8 @@ public class About.HardwareView : Gtk.Box {
     private bool has_hostname_permission () {
         request_hostname_permission ();
 
-        return hostname_permission != null && hostname_permission.allowed;
+        return hostname_permission != null &&
+            (hostname_permission.allowed || hostname_permission.can_acquire);
     }
 
     // Generate static hostname from pretty hostname
@@ -669,25 +676,31 @@ public class About.HardwareView : Gtk.Box {
         return hostname;
     }
 
-    private async void set_host_name (string hostname) {
+    private async bool set_host_name (string hostname) {
         get_system_interface_instance ();
 
         if (system_interface == null) {
-            return;
+            return false;
         }
 
         request_hostname_permission ();
 
         if (hostname_permission == null) {
-            return;
+            return false;
         }
 
         string static_hostname = generate_hostname (hostname);
         try {
+            if (!hostname_permission.allowed &&
+                !(yield hostname_permission.acquire_async (null))) {
+                return false;
+            }
             yield system_interface.set_pretty_hostname (hostname, false);
             yield system_interface.set_static_hostname (static_hostname, false);
+            return true;
         } catch (Error e) {
             warning (e.message);
+            return false;
         }
     }
 
