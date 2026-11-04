@@ -85,15 +85,15 @@ public class About.OperatingSystemView : Switchboard.SettingsPage {
 
                 if (file.query_exists ()) {
                     logo_file = file;
-                    logo = new Adw.Avatar (128, "", false) {
-                        custom_image = Gdk.Paintable.empty (128, 128)
+                    logo = new Adw.Avatar (48, "", false) {
+                        custom_image = Gdk.Paintable.empty (48, 48)
                     };
 
                     logo_overlay.child = logo;
                     logo_overlay.add_overlay (icon);
 
-                    // 128 minus 3px padding on each side
-                    icon.pixel_size = 128 - 6;
+                    // 48 minus 3px padding on each side
+                    icon.pixel_size = 48 - 6;
                     icon.add_css_class ("logo");
 
                     break;
@@ -102,7 +102,7 @@ public class About.OperatingSystemView : Switchboard.SettingsPage {
         }
 
         if (icon.parent == null) {
-            icon.pixel_size = 128;
+            icon.pixel_size = 48;
             logo_overlay.child = icon;
         }
 
@@ -209,8 +209,6 @@ public class About.OperatingSystemView : Switchboard.SettingsPage {
         updates_grid.attach (details_button_revealer, 1, 2, 2);
 
         var updates_list = new Gtk.ListBox () {
-            margin_bottom = 12,
-            margin_top = 12,
             valign = CENTER,
             show_separators = true,
             selection_mode = NONE,
@@ -225,8 +223,6 @@ public class About.OperatingSystemView : Switchboard.SettingsPage {
         updates_list.get_last_child ().focusable = false;
 
         var links_list = new Gtk.ListBox () {
-            margin_bottom = 12,
-            margin_top = 12,
             valign = CENTER,
             show_separators = true,
             selection_mode = NONE,
@@ -268,22 +264,26 @@ public class About.OperatingSystemView : Switchboard.SettingsPage {
         bug_button.visible = bug_url != "";
 
         software_grid = new Gtk.Grid () {
-            column_spacing = 32,
-            margin_top = 12,
+            column_spacing = 12,
             valign = Gtk.Align.START,
             vexpand = true,
             hexpand = true
         };
-        software_grid.attach (logo_overlay, 0, 0, 1, 4);
+        software_grid.attach (logo_overlay, 0, 0, 1, 3);
         software_grid.attach (title, 1, 0);
-
         software_grid.attach (kernel_version_label, 1, 2);
-        software_grid.attach (updates_list, 1, 3);
+
+        var main_box = new Granite.Box (VERTICAL, DOUBLE) {
+            margin_top = 12,
+            valign = START
+        };
+        main_box.append (software_grid);
+        main_box.append (updates_list);
         if (links_list.get_first_child () != null) {
-            software_grid.attach (links_list, 1, 4);
+            main_box.append (links_list);
         }
 
-        child = software_grid;
+        child = main_box;
 
         var system_updates_settings = new Settings ("io.elementary.settings-daemon.system-update");
         system_updates_settings.bind ("automatic-updates", automatic_updates_button, "active", DEFAULT);
@@ -392,7 +392,7 @@ public class About.OperatingSystemView : Switchboard.SettingsPage {
             };
             based_off.add_css_class (Granite.CssClass.SMALL);
             based_off.add_css_class (Granite.CssClass.DIM);
-            software_grid.attach (based_off, 1, 1, 3);
+            software_grid.attach (based_off, 1, 1);
         }
     }
 
