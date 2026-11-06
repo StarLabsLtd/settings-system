@@ -1,0 +1,1 @@
+option('ubuntu_drivers', type: 'boolean', value: true, description: 'Show driver management provided by elementary Settings Daemon UbuntuDrivers')

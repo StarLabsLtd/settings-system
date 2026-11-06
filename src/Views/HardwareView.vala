@@ -6,7 +6,7 @@
  *                         2008 William Jon McCann <jmccann@redhat.com>
  */
 
-public class About.HardwareView : Gtk.Box {
+public class About.HardwareView : Switchboard.SettingsPage {
     private bool oem_enabled;
     private string manufacturer_icon_path;
     private string? manufacturer_icon_dark_path = null;
@@ -32,6 +32,14 @@ public class About.HardwareView : Gtk.Box {
 
     private Granite.Settings granite_settings;
 
+    public HardwareView () {
+        Object (
+            header: _("Information"),
+            icon: new ThemedIcon ("computer"),
+            title: _("Hardware")
+        );
+    }
+
     construct {
         granite_settings = Granite.Settings.get_default ();
 
@@ -42,7 +50,9 @@ public class About.HardwareView : Gtk.Box {
             hexpand = true,
             text = get_host_name ()
         };
-        hostname_entry.add_css_class (Granite.STYLE_CLASS_H2_LABEL);
+        var hostname_label = new Gtk.Label (_("Computer Name")) { xalign = 0 };
+        hostname_label.add_css_class (Granite.STYLE_CLASS_H3_LABEL);
+        hostname_entry.update_relation (Gtk.AccessibleRelation.LABELLED_BY, hostname_label, null, -1);
 
         if (!has_hostname_permission ()) {
             hostname_entry.secondary_icon_name = "changes-prevent-symbolic";
@@ -85,6 +95,7 @@ public class About.HardwareView : Gtk.Box {
         };
 
         var details_box = new Gtk.Box (VERTICAL, 6);
+        details_box.append (hostname_label);
         details_box.append (hostname_entry);
 
         manufacturer_logo = new Gtk.Image () {
@@ -134,21 +145,12 @@ public class About.HardwareView : Gtk.Box {
         }
 
         var box = new Gtk.Box (HORIZONTAL, 32) {
-            valign = CENTER
+            valign = START
         };
         box.append (manufacturer_logo);
         box.append (details_box);
 
-        var clamp = new Adw.Clamp () {
-            child = box,
-            hexpand = true
-        };
-
-        margin_top = 12;
-        margin_end = 12;
-        margin_bottom = 12;
-        margin_start = 12;
-        append (clamp);
+        child = box;
 
         granite_settings.notify["prefers-color-scheme"].connect (() => {
             update_manufacturer_logo ();

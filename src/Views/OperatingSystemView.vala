@@ -18,7 +18,7 @@
 * Boston, MA 02110-1301 USA
 */
 
-public class About.OperatingSystemView : Gtk.Box {
+public class About.OperatingSystemView : Switchboard.SettingsPage {
     private static string _bug_url;
     private static string bug_url {
         get {
@@ -97,6 +97,14 @@ public class About.OperatingSystemView : Gtk.Box {
     private Gtk.Revealer details_button_revealer;
     private Gtk.Stack button_stack;
     private SponsorUsRow sponsor_us_row;
+
+    public OperatingSystemView () {
+        Object (
+            header: _("Information"),
+            icon: new ThemedIcon ("distributor-logo"),
+            title: _("Operating System")
+        );
+    }
 
     construct {
         add_css_class ("operating-system-view");
@@ -320,20 +328,8 @@ public class About.OperatingSystemView : Gtk.Box {
         links_list.append (website_link);
         links_list.append (getinvolved_link);
 
-        var settings_restore_button = new Gtk.Button.with_label (_("Restore Default Settings"));
-
-        var bug_button = new Gtk.Button.with_label (_("Send Feedback")) {
-            halign = END,
-            hexpand = true
-        };
-
-        var button_grid = new Gtk.Box (HORIZONTAL, 6) {
-            margin_start = 12,
-            margin_end = 12,
-            margin_bottom = 12
-        };
-        button_grid.append (settings_restore_button);
-        button_grid.append (bug_button);
+        var settings_restore_button = add_start_button (_("Restore Default Settings"));
+        var bug_button = add_button (_("Send Feedback"));
 
         software_grid = new Gtk.Grid () {
             column_spacing = 12,
@@ -354,18 +350,7 @@ public class About.OperatingSystemView : Gtk.Box {
         main_box.append (sponsor_list);
         main_box.append (links_list);
 
-        var clamp = new Adw.Clamp () {
-            child = main_box
-        };
-
-        var scrolled_window = new Gtk.ScrolledWindow () {
-            child = clamp
-        };
-
-        orientation = Gtk.Orientation.VERTICAL;
-        spacing = 12;
-        append (scrolled_window);
-        append (button_grid);
+        child = main_box;
 
         var system_updates_settings = new Settings ("io.elementary.settings-daemon.system-update");
         system_updates_settings.bind ("automatic-updates", automatic_updates_button, "active", DEFAULT);
@@ -550,12 +535,21 @@ public class About.OperatingSystemView : Gtk.Box {
 
                 try {
                     var details = yield update_proxy.get_update_details ();
-                    updates_description.label = dngettext (
-                        GETTEXT_PACKAGE,
-                        "%i update available (%s)",
-                        "%i updates available (%s)",
-                        details.packages.length
-                    ).printf (details.packages.length, GLib.format_size (details.size));
+                    if (details.size > 0) {
+                        updates_description.label = dngettext (
+                            GETTEXT_PACKAGE,
+                            "%i update available (%s)",
+                            "%i updates available (%s)",
+                            details.packages.length
+                        ).printf (details.packages.length, GLib.format_size (details.size));
+                    } else {
+                        updates_description.label = dngettext (
+                            GETTEXT_PACKAGE,
+                            "%i update available",
+                            "%i updates available",
+                            details.packages.length
+                        ).printf (details.packages.length);
+                    }
 
                     if (Pk.Info.SECURITY in details.info) {
                         updates_image.icon_name = "software-update-urgent";

@@ -14,7 +14,7 @@ datadir = join_paths(prefix, get_option('datadir'))
 libdir = join_paths(prefix, get_option('libdir'))
 
 glib_dep = dependency('glib-2.0', version: '>=2.64.0')
-fwupd_dep = dependency('fwupd')
+fwupd_dep = dependency('fwupd', version: '>=1.8.4')
 appstream_dep = dependency ('appstream', version: '>=0.12.10')
 
 add_project_arguments(
@@ -36,6 +36,27 @@ if fwupd_dep.version().version_compare ('>=2.0.0')
     vala_flags += ['--define', 'HAS_FWUPD_2_0']
 endif
 
+c_compiler = meson.get_compiler('c')
+if c_compiler.has_function(
+    'fwupd_bios_setting_get_help_text',
+    prefix: '#include <fwupd.h>',
+    dependencies: fwupd_dep
+) and c_compiler.has_function(
+    'fwupd_bios_setting_get_display_group',
+    prefix: '#include <fwupd.h>',
+    dependencies: fwupd_dep
+)
+    vala_flags += ['--define', 'HAS_FWUPD_BIOS_METADATA']
+endif
+
+if c_compiler.has_function(
+    'fwupd_client_get_pending_reboot',
+    prefix: '#include <fwupd.h>',
+    dependencies: fwupd_dep
+)
+    vala_flags += ['--define', 'HAS_FWUPD_PENDING_REBOOT']
+endif
+
 if appstream_dep.version().version_compare('>=1.0')
     vala_flags += ['--define', 'HAS_APPSTREAM_1_0']
 endif
@@ -44,4 +65,5 @@ add_project_arguments(vala_flags, language: 'vala')
 
 subdir('data')
 subdir('src')
+subdir('tests')
 subdir('po')

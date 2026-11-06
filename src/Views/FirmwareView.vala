@@ -28,9 +28,11 @@ public class About.FirmwareView : Switchboard.SettingsPage {
     private Gtk.ListBox update_list;
     private uint num_updates = 0;
     private Fwupd.Client fwupd_client;
+    public signal void open_settings ();
 
     public FirmwareView () {
         Object (
+            header: _("Maintenance"),
             icon: new ThemedIcon ("application-x-firmware"),
             title: _("Firmware"),
             description: _("Firmware updates provided by device manufacturers can improve performance and fix critical security issues.")
@@ -79,6 +81,9 @@ public class About.FirmwareView : Switchboard.SettingsPage {
         };
 
         child = frame;
+
+        var firmware_settings_button = add_button (_("Firmware Settings…"));
+        firmware_settings_button.clicked.connect (() => open_settings ());
 
         if (LoginManager.get_instance ().can_reboot_to_firmware_setup ()) {
             var reboot_to_firmware_setup_button = add_button (_("Restart to Firmware Setup…"));

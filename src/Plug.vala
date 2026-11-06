@@ -22,10 +22,14 @@ public class About.Plug : Switchboard.Plug {
     private const string OPERATING_SYSTEM = "operating-system";
     private const string HARDWARE = "hardware";
     private const string FIRMWARE = "firmware";
+    private const string FIRMWARE_SETTINGS = "firmware-settings";
+    private const string SECURITY = "security";
+#if UBUNTU_DRIVERS
     private const string DRIVERS = "drivers";
+#endif
 
     private OperatingSystemView operating_system_view;
-    private Adw.ToolbarView toolbarview;
+    private Gtk.Paned hpaned;
     private Gtk.Stack stack;
     private GLib.Cancellable sponsors_goal_cancellable;
 
@@ -38,56 +42,79 @@ public class About.Plug : Switchboard.Plug {
         settings.set ("about/os", OPERATING_SYSTEM);
         settings.set ("about/hardware", HARDWARE);
         settings.set ("about/firmware", FIRMWARE);
+        settings.set ("about/firmware/settings", FIRMWARE_SETTINGS);
+#if UBUNTU_DRIVERS
         settings.set ("about/drivers", DRIVERS);
+#endif
+        settings.set ("about/security", SECURITY);
 
         Object (
             category: Category.SYSTEM,
             code_name: "io.elementary.settings.system",
             display_name: _("System"),
-            description: _("View operating system and hardware information"),
+            description: _("View system information and configure firmware settings"),
             icon: "application-x-firmware",
             supported_settings: settings
         );
     }
 
     public override Gtk.Widget get_widget () {
-        if (toolbarview == null) {
-            operating_system_view = new OperatingSystemView ();
+        if (hpaned == null) {
+            operating_system_view = new OperatingSystemView () {
+                show_end_title_buttons = true
+            };
 
-            var hardware_view = new HardwareView ();
-            var firmware_view = new FirmwareView ();
+            var hardware_view = new HardwareView () {
+                show_end_title_buttons = true
+            };
+            var security_view = new SecurityView () {
+                show_end_title_buttons = true
+            };
+            var firmware_settings_page = new FirmwareSettingsPage () {
+                show_end_title_buttons = true
+            };
+            var firmware_view = new FirmwareView () {
+                show_end_title_buttons = true
+            };
+#if UBUNTU_DRIVERS
+            var drivers_view = new DriversView () {
+                show_end_title_buttons = true
+            };
+#endif
 
             stack = new Gtk.Stack () {
                 vexpand = true
             };
-            stack.add_titled (operating_system_view, OPERATING_SYSTEM, _("Operating System"));
-            stack.add_titled (hardware_view, HARDWARE, _("Hardware"));
-            stack.add_titled (firmware_view, FIRMWARE, _("Firmware"));
-            stack.add_titled (new DriversView (), DRIVERS, _("Drivers"));
+            stack.add_named (operating_system_view, OPERATING_SYSTEM);
+            stack.add_named (hardware_view, HARDWARE);
+            stack.add_named (security_view, SECURITY);
+            stack.add_named (firmware_view, FIRMWARE);
+            stack.add_named (firmware_settings_page, FIRMWARE_SETTINGS);
+            firmware_view.open_settings.connect (() => stack.set_visible_child_name (FIRMWARE_SETTINGS));
+#if UBUNTU_DRIVERS
+            stack.add_named (drivers_view, DRIVERS);
+#endif
 
-            var stack_switcher = new Gtk.StackSwitcher () {
-                stack = stack
+            var switcher = new Switchboard.SettingsSidebar (stack) {
+                show_title_buttons = true
             };
 
-            var size_group = new Gtk.SizeGroup (HORIZONTAL);
-            var child = stack_switcher.get_first_child ();
-            while (child != null) {
-                size_group.add_widget (child);
-                child = child.get_next_sibling ();
+            hpaned = new Gtk.Paned (Gtk.Orientation.HORIZONTAL) {
+                start_child = switcher,
+                resize_start_child = false,
+                shrink_start_child = false,
+                end_child = stack,
+                shrink_end_child = false
+            };
+
+            var sss = SettingsSchemaSource.get_default ().lookup ("io.elementary.settings", true);
+            if (sss != null && sss.has_key ("sidebar-position")) {
+                var settings = new Settings ("io.elementary.settings");
+                settings.bind ("sidebar-position", hpaned, "position", DEFAULT);
             }
-
-            var headerbar = new Adw.HeaderBar () {
-                title_widget = stack_switcher
-            };
-            headerbar.add_css_class (Granite.STYLE_CLASS_FLAT);
-
-            toolbarview = new Adw.ToolbarView () {
-                content = stack
-            };
-            toolbarview.add_top_bar (headerbar);
         }
 
-        return toolbarview;
+        return hpaned;
     }
 
     public override void shown () {
@@ -108,7 +135,11 @@ public class About.Plug : Switchboard.Plug {
             case OPERATING_SYSTEM:
             case HARDWARE:
             case FIRMWARE:
+            case FIRMWARE_SETTINGS:
+#if UBUNTU_DRIVERS
             case DRIVERS:
+#endif
+            case SECURITY:
                 stack.set_visible_child_name (location);
                 break;
             default:
@@ -138,13 +169,20 @@ public class About.Plug : Switchboard.Plug {
         search_results.set ("%s → %s".printf (display_name, _("Hardware")), HARDWARE);
         search_results.set ("%s → %s → %s".printf (display_name, _("Hardware"), _("Device name")), HARDWARE);
         search_results.set ("%s → %s → %s".printf (display_name, _("Hardware"), _("Host name")), HARDWARE);
+        search_results.set ("%s → %s → %s".printf (display_name, _("Hardware"), _("Computer Name")), HARDWARE);
         // https://github.com/elementary/switchboard-plug-about/issues/219
         search_results.set ("%s → %s".printf (display_name, _("About This Device")), HARDWARE);
 
         search_results.set ("%s → %s".printf (display_name, _("Firmware")), FIRMWARE);
+        search_results.set ("%s → %s".printf (display_name, _("Firmware Settings")), FIRMWARE_SETTINGS);
+        search_results.set ("%s → %s".printf (display_name, _("BIOS Settings")), FIRMWARE_SETTINGS);
+        search_results.set ("%s → %s".printf (display_name, _("UEFI Settings")), FIRMWARE_SETTINGS);
         search_results.set ("%s → %s → %s".printf (display_name, _("Firmware"), _("Restart to Firmware Setup…")), FIRMWARE);
 
+#if UBUNTU_DRIVERS
         search_results.set ("%s → %s".printf (display_name, _("Drivers")), DRIVERS);
+#endif
+        search_results.set ("%s → %s".printf (display_name, _("Security")), SECURITY);
 
         return search_results;
     }

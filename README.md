@@ -8,7 +8,7 @@
 You'll need the following dependencies:
 
 * libswitchboard-3-dev
-* libfwupd-dev
+* libfwupd-dev (>= 1.8.4, for the BIOS settings API)
 * libgranite-7-dev
 * libgtk-4-dev
 * libgtop2-dev
@@ -28,6 +28,10 @@ Run `meson` to configure the build environment and then `ninja` to build
     meson build --prefix=/usr
     cd build
     ninja
+
+Driver management requires the UbuntuDrivers backend in elementary Settings Daemon.
+When that backend is not built, configure System Settings with `-Dubuntu_drivers=false`
+to omit the Drivers page and its search and settings links. The option defaults to true.
 
 To install, use `ninja install`
 
