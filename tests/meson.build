@@ -9,7 +9,7 @@ firmware_settings_test = executable(
         glib_dep,
         dependency('gio-2.0'),
         dependency('gtk4'),
-        dependency('libadwaita-1'),
+        dependency('libadwaita-1', version: '>=1.5'),
         dependency('granite-7'),
         dependency('polkit-gobject-1')
     ],
@@ -30,7 +30,7 @@ security_test = executable(
     'security-test.vala',
     meson.project_source_root() / 'src' / 'Views' / 'SecurityView.vala',
     dependencies: [fwupd_dep, glib_dep, switchboard_dep, dependency('gtk4'),
-                   dependency('libadwaita-1'), dependency('granite-7')],
+                   dependency('libadwaita-1', version: '>=1.5'), dependency('granite-7')],
     install: false
 )
 

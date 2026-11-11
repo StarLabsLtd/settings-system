@@ -118,6 +118,63 @@ private async About.FirmwareSettingsView create_view (TestBackend backend) {
     return view;
 }
 
+private Gtk.Button? find_apply (Gtk.Widget widget) {
+    if (widget is Gtk.Button && ((Gtk.Button) widget).label == "Apply (1)") {
+        return (Gtk.Button) widget;
+    }
+    for (var child = widget.get_first_child (); child != null; child = child.get_next_sibling ()) {
+        var found = find_apply (child);
+        if (found != null) return found;
+    }
+    return null;
+}
+
+private Adw.AlertDialog? find_confirmation (Gtk.Widget widget) {
+    if (widget is Adw.AlertDialog) return (Adw.AlertDialog) widget;
+    for (var child = widget.get_first_child (); child != null; child = child.get_next_sibling ()) {
+        var found = find_confirmation (child);
+        if (found != null) return found;
+    }
+    return null;
+}
+
+private Adw.AlertDialog? confirmation (Gtk.Window parent) {
+    var windows = Gtk.Window.get_toplevels ();
+    for (uint i = 0; i < windows.get_n_items (); i++) {
+        var window = (Gtk.Window) windows.get_item (i);
+        var dialog = find_confirmation (window);
+        if (dialog != null) return dialog;
+    }
+    return null;
+}
+
+private async void confirmation_scenario () {
+    var backend = new TestBackend ();
+    backend.settings = { string_setting ("A", "old-a") };
+    var view = yield create_view (backend);
+    var window = new Gtk.Window () { child = view, default_width = 900, default_height = 600 };
+    window.present ();
+    yield next_iteration ();
+    view.edit_for_test ("A", "draft-a");
+    var button = find_apply (view);
+    assert (button != null);
+    button.clicked ();
+    var dialog = confirmation (window);
+    assert (dialog != null);
+    assert (backend.write_count == 0);
+    dialog.response ("cancel");
+    assert (view.draft_for_test ("A") == "draft-a");
+    assert (backend.write_count == 0);
+    button.clicked ();
+    dialog = confirmation (window);
+    assert (dialog != null);
+    dialog.response ("apply");
+    while (view.draft_for_test ("A") != null) yield next_iteration ();
+    assert (backend.write_count == 1);
+    assert (backend.last_changes.lookup ("A") == "draft-a");
+    window.destroy ();
+}
+
 private async void access_scenario () {
     var backend = new TestBackend ();
     backend.settings = { string_setting ("A", "old-a") };
@@ -149,13 +206,16 @@ private async void write_scenario () {
 
     // The editor reaches one batch request without a separate write-
     // authorization operation. Polkit authorization is not simulated here.
+    assert (view.describe_changes () == "");
     view.edit_for_test ("A", "first-write");
+    assert ("old-a → first-write" in view.describe_changes ());
+    assert (!("old-b" in view.describe_changes ()));
     yield view.apply_for_test ();
     assert (backend.write_count == 1);
     assert (backend.last_changes.size () == 1);
     assert (backend.last_changes.lookup ("A") == "first-write");
     assert (view.draft_for_test ("A") == null);
-    assert ("reported by firmware" in view.status_for_test ());
+    assert (view.status_for_test () == "");
 
     view.edit_for_test ("A", "second-write");
     yield view.apply_for_test ();
@@ -456,8 +516,16 @@ private async void metadata_scenario () {
 #endif
 
 public int main (string[] args) {
-    Gtk.init ();
+    Adw.init ();
     Test.init (ref args);
+    Test.add_func ("/firmware-settings/confirmation", () => {
+        var loop = new MainLoop ();
+        confirmation_scenario.begin ((obj, result) => {
+            confirmation_scenario.end (result);
+            loop.quit ();
+        });
+        loop.run ();
+    });
     Test.add_func ("/firmware-settings/access", () => {
         var loop = new MainLoop ();
         access_scenario.begin ((obj, result) => {

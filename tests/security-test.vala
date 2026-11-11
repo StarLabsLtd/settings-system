@@ -19,6 +19,17 @@ private bool has_text (Gtk.Widget widget, string text) {
     return false;
 }
 
+private bool has_badge (Gtk.Widget widget, string text, string style) {
+    if (widget is Gtk.Label && ((Gtk.Label) widget).get_text () == text &&
+        widget.has_css_class ("security-badge") && widget.has_css_class (style)) {
+        return true;
+    }
+    for (var child = widget.get_first_child (); child != null; child = child.get_next_sibling ()) {
+        if (has_badge (child, text, style)) return true;
+    }
+    return false;
+}
+
 private Fwupd.SecurityAttr check (string name, Fwupd.SecurityAttrResult result) {
     var attr = new Fwupd.SecurityAttr ("org.fwupd.hsi.Test." + name);
     attr.set_name (name);
@@ -56,6 +67,9 @@ private void grouping () {
     assert (has_text (view, "Vendor & Co <Device> test."));
     assert (!has_text (view, "Obsolete"));
     assert (has_text (view, "Some security checks need attention."));
+    assert (has_badge (view, "Passed", "success"));
+    assert (has_badge (view, "Needs Attention", "warning"));
+    assert (has_badge (view, "Unavailable", "dim-label"));
     view.show_checks (new GenericArray<weak Fwupd.SecurityAttr> (), null, null, null);
     assert (find_group (view, "Passed (1)") == null);
     assert (has_text (view, "Security checks are not available on this device."));

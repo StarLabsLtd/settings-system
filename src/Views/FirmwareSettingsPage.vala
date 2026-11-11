@@ -10,11 +10,11 @@ public class About.FirmwareSettingsPage : Switchboard.SettingsPage {
         );
     }
 
-    construct {
+    internal Adw.NavigationView create_editor () {
         var editor = new FirmwareSettingsView ();
         var navigation = new Adw.NavigationView ();
         navigation.add (editor);
-        child = navigation;
-        map.connect (() => editor.load.begin ());
+        editor.map.connect (() => editor.load.begin ());
+        return navigation;
     }
 }
