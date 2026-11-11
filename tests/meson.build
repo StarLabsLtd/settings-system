@@ -20,7 +20,7 @@ test(
     'firmware settings batch editor',
     find_program('run-firmware-settings.sh'),
     args: firmware_settings_test,
-    env: ['GSETTINGS_BACKEND=memory', 'GTK_A11Y=none'],
+    env: ['GSETTINGS_BACKEND=memory', 'GTK_A11Y=test'],
     protocol: 'tap',
     suite: 'firmware-settings'
 )

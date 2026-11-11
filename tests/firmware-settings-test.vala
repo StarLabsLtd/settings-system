@@ -1,5 +1,9 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 
+[CCode (cname = "gtk_test_accessible_check_property", cheader_filename = "gtk/gtk.h")]
+private extern string? check_accessible_property (Gtk.Accessible accessible,
+                                                  Gtk.AccessibleProperty property, ...);
+
 private enum WriteResult {
     SUCCESS,
     AUTH_REJECTED,
@@ -196,23 +200,32 @@ private async void slider_scenario () {
     var input = (Gtk.Entry) view.control_for_test ("level");
     var slider = input.get_parent ().get_first_child () as Gtk.Scale;
     assert (slider != null);
+    assert (Gtk.test_accessible_has_relation (slider, Gtk.AccessibleRelation.LABELLED_BY));
+    assert (check_accessible_property (slider, Gtk.AccessibleProperty.VALUE_TEXT, "10") == null);
     slider.set_value (3);
+    assert (check_accessible_property (slider, Gtk.AccessibleProperty.VALUE_TEXT, "20") == null);
     assert (input.text == "20");
     assert (view.draft_for_test ("level") == "20");
     input.text = "25";
     assert (slider.get_value () == 4);
+    assert (check_accessible_property (slider, Gtk.AccessibleProperty.VALUE_TEXT, "25") == null);
     input.text = "24";
     assert (!view.can_apply_for_test ());
     view.discard_for_test ("level");
     assert (input.text == "10");
     assert (slider.get_value () == 1);
+    assert (check_accessible_property (slider, Gtk.AccessibleProperty.VALUE_TEXT, "10") == null);
     var selector = (Gtk.DropDown) view.control_for_test ("com.coreboot-cfr.memory_speed");
     var memory_slider = selector.get_parent ().get_first_child () as Gtk.Scale;
     assert (memory_slider != null);
+    assert (Gtk.test_accessible_has_relation (memory_slider, Gtk.AccessibleRelation.LABELLED_BY));
+    assert (check_accessible_property (memory_slider, Gtk.AccessibleProperty.VALUE_TEXT, "6400MT/s") == null);
     memory_slider.set_value (2);
+    assert (check_accessible_property (memory_slider, Gtk.AccessibleProperty.VALUE_TEXT, "7500MT/s") == null);
     assert (view.draft_for_test ("com.coreboot-cfr.memory_speed") == "7500MT/s");
     view.discard_for_test ("com.coreboot-cfr.memory_speed");
     assert (memory_slider.get_value () == 1);
+    assert (check_accessible_property (memory_slider, Gtk.AccessibleProperty.VALUE_TEXT, "6400MT/s") == null);
     var large = (Gtk.Entry) view.control_for_test ("large");
     assert (large.get_parent ().get_first_child () == large);
     var weak_slider = WeakRef (slider);
