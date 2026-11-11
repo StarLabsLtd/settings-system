@@ -21,6 +21,10 @@ public class About.SecurityView : Switchboard.SettingsPage {
     }
 
     construct {
+        var css = new Gtk.CssProvider ();
+        css.load_from_string (".security-badge { border-radius: 999px; padding: 3px 9px; background-color: alpha(currentColor, 0.12); }");
+        Gtk.StyleContext.add_provider_for_display (Gdk.Display.get_default (), css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION);
+
         summary_label = new Gtk.Label (_("Checking security…")) {
             wrap = true,
             xalign = 0
@@ -143,10 +147,16 @@ public class About.SecurityView : Switchboard.SettingsPage {
                 check.get_appstream_id () ?? _("Security Check");
             var row = new Adw.ExpanderRow () {
                 title = dgettext ("fwupd", name),
-                subtitle = result,
                 use_markup = false
             };
-            row.add_prefix (new Gtk.Image.from_icon_name (icon_name));
+            var status_class = missing ? "dim-label" : success ? "success" : "warning";
+            var icon = new Gtk.Image.from_icon_name (icon_name);
+            icon.add_css_class (status_class);
+            row.add_prefix (icon);
+            var badge = new Gtk.Label (result) { valign = CENTER };
+            badge.add_css_class ("security-badge");
+            badge.add_css_class (status_class);
+            row.add_suffix (badge);
 
             var details = new Gtk.Box (VERTICAL, 6) {
                 margin_top = 12,
@@ -209,6 +219,11 @@ public class About.SecurityView : Switchboard.SettingsPage {
         add_check_group (_("Needs Attention"), failed, attention_list, true);
         add_check_group (_("Unavailable"), unavailable, unavailable_list, true);
         add_check_group (_("Passed"), passed, passed_list, false);
+        summary_icon.remove_css_class ("warning");
+        summary_icon.remove_css_class ("success");
+        summary_icon.remove_css_class ("dim-label");
+        summary_icon.add_css_class (failed > 0 ? "warning"
+            : unavailable > 0 || passed == 0 ? "dim-label" : "success");
         summary_icon.icon_name = failed > 0 ? "dialog-warning-symbolic"
             : unavailable > 0 || passed == 0 ? "dialog-question-symbolic" : "security-high-symbolic";
 

@@ -30,6 +30,7 @@ public class About.Plug : Switchboard.Plug {
 
     private OperatingSystemView operating_system_view;
     private Gtk.Paned hpaned;
+    private Gtk.Stack pages;
     private Gtk.Stack stack;
 
     public Plug () {
@@ -106,6 +107,21 @@ public class About.Plug : Switchboard.Plug {
                 shrink_end_child = false
             };
 
+            var firmware_navigation = firmware_settings_page.create_editor ();
+            var firmware_editor = (FirmwareSettingsView) firmware_navigation.visible_page;
+            pages = new Gtk.Stack ();
+            pages.add_named (hpaned, "system");
+            pages.add_named (firmware_navigation, FIRMWARE_SETTINGS);
+            stack.notify["visible-child-name"].connect (() => {
+                if (stack.visible_child_name == FIRMWARE_SETTINGS) {
+                    pages.visible_child_name = FIRMWARE_SETTINGS;
+                }
+            });
+            firmware_editor.back_requested.connect (() => {
+                stack.visible_child_name = FIRMWARE;
+                pages.visible_child_name = "system";
+            });
+
             var sss = SettingsSchemaSource.get_default ().lookup ("io.elementary.settings", true);
             if (sss != null && sss.has_key ("sidebar-position")) {
                 var settings = new Settings ("io.elementary.settings");
@@ -113,7 +129,7 @@ public class About.Plug : Switchboard.Plug {
             }
         }
 
-        return hpaned;
+        return pages;
     }
 
     public override void shown () {
@@ -133,9 +149,11 @@ public class About.Plug : Switchboard.Plug {
 #endif
             case SECURITY:
                 stack.set_visible_child_name (location);
+                pages.visible_child_name = location == FIRMWARE_SETTINGS ? FIRMWARE_SETTINGS : "system";
                 break;
             default:
                 stack.set_visible_child_name (OPERATING_SYSTEM);
+                pages.visible_child_name = "system";
                 break;
         }
     }

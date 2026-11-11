@@ -49,7 +49,7 @@ shared_module(
         dependency('gobject-2.0'),
         dependency('granite-7'),
         dependency('gtk4'),
-        dependency('libadwaita-1'),
+        dependency('libadwaita-1', version: '>=1.5'),
         dependency('libgtop-2.0'),
         dependency('packagekit-glib2'),
         dependency('gudev-1.0'),
