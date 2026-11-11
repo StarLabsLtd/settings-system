@@ -182,8 +182,17 @@ private async void slider_scenario () {
     numeric.set_scalar_increment (5);
     var memory = enum_setting ("com.coreboot-cfr.memory_speed", "6400MT/s",
                               {"5500MT/s", "6400MT/s", "7500MT/s"});
-    backend.settings = { numeric, memory, integer_setting ("large", "0") };
+    backend.settings = { numeric, memory, integer_setting ("large", "0"),
+        enum_setting ("com.coreboot-cfr.webcam", "Enabled", {"Disabled", "Enabled"}) };
     var view = yield create_view (backend);
+    var toggle = view.control_for_test ("com.coreboot-cfr.webcam") as Gtk.Switch;
+    assert (toggle != null && toggle.active);
+    toggle.active = false;
+    assert (view.draft_for_test ("com.coreboot-cfr.webcam") == "Disabled");
+    view.discard_for_test ("com.coreboot-cfr.webcam");
+    assert (toggle.active);
+    var weak_toggle = WeakRef (toggle);
+    toggle = null;
     var input = (Gtk.Entry) view.control_for_test ("level");
     var slider = input.get_parent ().get_first_child () as Gtk.Scale;
     assert (slider != null);
@@ -215,6 +224,7 @@ private async void slider_scenario () {
     yield view.load ();
     assert (weak_slider.get () == null);
     assert (weak_memory_slider.get () == null);
+    assert (weak_toggle.get () == null);
     assert (backend.write_count == 0);
 }
 
