@@ -376,6 +376,8 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
                         hexpand = true
                     };
                     scale.set_value (selected);
+                    scale.update_relation (Gtk.AccessibleRelation.LABELLED_BY, name_label, null, -1);
+                    scale.update_property (Gtk.AccessibleProperty.VALUE_TEXT, possible[selected], -1);
                     var selector_ref = WeakRef (selector);
                     var scale_ref = WeakRef (scale);
                     scale.value_changed.connect (() => {
@@ -386,7 +388,11 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
                     selector.notify["selected"].connect (() => {
                         var control = scale_ref.get () as Gtk.Scale;
                         var selection = selector_ref.get () as Gtk.DropDown;
-                        if (control != null && selection != null) control.set_value (selection.selected);
+                        if (control != null && selection != null && selection.selected_item != null) {
+                            var item = (Gtk.StringObject) selection.selected_item;
+                            control.set_value (selection.selected);
+                            control.update_property (Gtk.AccessibleProperty.VALUE_TEXT, item.string, -1);
+                        }
                     });
                     controls.orientation = VERTICAL;
                     controls.prepend (scale);
@@ -420,6 +426,8 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
                     hexpand = true
                 };
                 scale.set_value ((uint64.parse (value) - minimum) / step);
+                scale.update_relation (Gtk.AccessibleRelation.LABELLED_BY, name_label, null, -1);
+                scale.update_property (Gtk.AccessibleProperty.VALUE_TEXT, value, -1);
                 var input_ref = WeakRef (input);
                 var scale_ref = WeakRef (scale);
                 scale.value_changed.connect (() => {
@@ -434,6 +442,7 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
                     var text = input_ref.get () as Gtk.Entry;
                     if (control != null && text != null && valid_value (setting, text.text)) {
                         control.set_value ((uint64.parse (text.text) - minimum) / step);
+                        control.update_property (Gtk.AccessibleProperty.VALUE_TEXT, text.text, -1);
                     }
                 });
                 controls.orientation = VERTICAL;
