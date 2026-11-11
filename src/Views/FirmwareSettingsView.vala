@@ -309,11 +309,6 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
         }
 #endif
 
-        var reported = new Gtk.Label (_("Reported value: %s").printf (current ?? _("Unavailable"))) {
-            xalign = 0, wrap = true, selectable = true
-        };
-        reported.add_css_class (Granite.CssClass.DIM);
-        box.append (reported);
         var controls = new Gtk.Box (HORIZONTAL, 6);
         Gtk.Entry? entry = null;
         Gtk.DropDown? dropdown = null;
