@@ -67,7 +67,7 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
         });
         var header_bar = new Gtk.HeaderBar () {
             show_title_buttons = true,
-            title_widget = new Gtk.Box (HORIZONTAL, 0)
+            title_widget = new Gtk.Label (_("Firmware Settings"))
         };
         var back_button = new Gtk.Button.from_icon_name ("go-previous-symbolic") {
             tooltip_text = _("Back to System")
@@ -99,15 +99,17 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
         settings_box = new Gtk.Box (VERTICAL, 12);
 
         var content = new Gtk.Box (VERTICAL, 12) {
-            margin_top = 12,
-            margin_bottom = 12,
-            margin_start = 12,
-            margin_end = 12
+            margin_top = 24,
+            margin_bottom = 24,
+            margin_start = 24,
+            margin_end = 24
         };
         content.append (status_label);
         content.append (reboot_label);
-        groups_stack = new Gtk.Stack ();
-        groups_sidebar = new Gtk.StackSidebar () { stack = groups_stack, visible = false };
+        groups_stack = new Gtk.Stack () { hhomogeneous = false, vhomogeneous = false };
+        groups_sidebar = new Gtk.StackSidebar () {
+            stack = groups_stack, visible = false, width_request = 190
+        };
         content.append (groups_stack);
         var layout = new Gtk.Box (HORIZONTAL, 12);
         layout.append (groups_sidebar);
@@ -338,6 +340,28 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
             pending_value_label = new Gtk.Label ("") { xalign = 0, wrap = true, visible = false };
             dropdown.update_relation (Gtk.AccessibleRelation.LABELLED_BY, name_label, null, -1);
             controls.append (dropdown);
+            if (id == "com.coreboot-cfr.memory_speed" && possible.length > 1 &&
+                selected != Gtk.INVALID_LIST_POSITION) {
+                var scale = new Gtk.Scale.with_range (HORIZONTAL, 0, possible.length - 1, 1) {
+                    draw_value = false,
+                    hexpand = true
+                };
+                scale.set_value (selected);
+                var selector_ref = WeakRef (selector);
+                var scale_ref = WeakRef (scale);
+                scale.value_changed.connect (() => {
+                    var control = selector_ref.get () as Gtk.DropDown;
+                    var slider = scale_ref.get () as Gtk.Scale;
+                    if (control != null && slider != null) control.selected = (uint) (slider.get_value () + 0.5);
+                });
+                selector.notify["selected"].connect (() => {
+                    var control = scale_ref.get () as Gtk.Scale;
+                    var selection = selector_ref.get () as Gtk.DropDown;
+                    if (control != null && selection != null) control.set_value (selection.selected);
+                });
+                controls.orientation = VERTICAL;
+                controls.prepend (scale);
+            }
         } else if (editable && (setting.get_kind () == Fwupd.BiosSettingKind.INTEGER ||
                                setting.get_kind () == Fwupd.BiosSettingKind.STRING)) {
             var input = new Gtk.Entry () {
@@ -353,7 +377,38 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
                     setting.get_scalar_increment ().to_string ())
                 : _("Length: %s–%s bytes").printf (
                     setting.get_lower_bound ().to_string (), setting.get_upper_bound ().to_string ());
-            box.append (new Gtk.Label (constraints) { xalign = 0, wrap = true });
+            input.tooltip_text = constraints;
+            var minimum = setting.get_lower_bound ();
+            var maximum = setting.get_upper_bound ();
+            var step = setting.get_scalar_increment ();
+            if (setting.get_kind () == Fwupd.BiosSettingKind.INTEGER &&
+                minimum < maximum && maximum < int.MAX && step > 0 &&
+                (maximum - minimum) % step == 0 && valid_value (setting, value)) {
+                var scale = new Gtk.Scale.with_range (HORIZONTAL, 0, (maximum - minimum) / step, 1) {
+                    draw_value = false,
+                    digits = 0,
+                    hexpand = true
+                };
+                scale.set_value ((uint64.parse (value) - minimum) / step);
+                var input_ref = WeakRef (input);
+                var scale_ref = WeakRef (scale);
+                scale.value_changed.connect (() => {
+                    var control = input_ref.get () as Gtk.Entry;
+                    var slider = scale_ref.get () as Gtk.Scale;
+                    if (control != null && slider != null) {
+                        control.text = (minimum + (uint64) (slider.get_value () + 0.5) * step).to_string ();
+                    }
+                });
+                input.changed.connect (() => {
+                    var control = scale_ref.get () as Gtk.Scale;
+                    var text = input_ref.get () as Gtk.Entry;
+                    if (control != null && text != null && valid_value (setting, text.text)) {
+                        control.set_value ((uint64.parse (text.text) - minimum) / step);
+                    }
+                });
+                controls.orientation = VERTICAL;
+                controls.prepend (scale);
+            }
         } else {
             controls.append (new Gtk.Label (current ?? _("Unavailable")) {
                 xalign = 0,
@@ -403,6 +458,7 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
 
         box.hexpand = true;
         controls.hexpand = false;
+        controls.width_request = 240;
         controls.valign = CENTER;
         var row = new Gtk.Box (HORIZONTAL, 18);
         row.append (box);
@@ -453,7 +509,12 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
 #endif
         }
 
-        settings_box.append (row);
+        row.margin_top = row.margin_bottom = 16;
+        row.margin_start = row.margin_end = 16;
+        var list = new Gtk.ListBox () { selection_mode = NONE };
+        list.add_css_class ("boxed-list");
+        list.append (new Gtk.ListBoxRow () { child = row, activatable = false });
+        settings_box.append (list);
     }
 
     private void add_unavailable_draft (string id, string value) {

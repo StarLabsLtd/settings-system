@@ -175,6 +175,49 @@ private async void confirmation_scenario () {
     window.destroy ();
 }
 
+private async void slider_scenario () {
+    var backend = new TestBackend ();
+    var numeric = integer_setting ("level", "10", 100);
+    numeric.set_lower_bound (5);
+    numeric.set_scalar_increment (5);
+    var memory = enum_setting ("com.coreboot-cfr.memory_speed", "6400MT/s",
+                              {"5500MT/s", "6400MT/s", "7500MT/s"});
+    backend.settings = { numeric, memory, integer_setting ("large", "0") };
+    var view = yield create_view (backend);
+    var input = (Gtk.Entry) view.control_for_test ("level");
+    var slider = input.get_parent ().get_first_child () as Gtk.Scale;
+    assert (slider != null);
+    slider.set_value (3);
+    assert (input.text == "20");
+    assert (view.draft_for_test ("level") == "20");
+    input.text = "25";
+    assert (slider.get_value () == 4);
+    input.text = "24";
+    assert (!view.can_apply_for_test ());
+    view.discard_for_test ("level");
+    assert (input.text == "10");
+    assert (slider.get_value () == 1);
+    var selector = (Gtk.DropDown) view.control_for_test ("com.coreboot-cfr.memory_speed");
+    var memory_slider = selector.get_parent ().get_first_child () as Gtk.Scale;
+    assert (memory_slider != null);
+    memory_slider.set_value (2);
+    assert (view.draft_for_test ("com.coreboot-cfr.memory_speed") == "7500MT/s");
+    view.discard_for_test ("com.coreboot-cfr.memory_speed");
+    assert (memory_slider.get_value () == 1);
+    var large = (Gtk.Entry) view.control_for_test ("large");
+    assert (large.get_parent ().get_first_child () == large);
+    var weak_slider = WeakRef (slider);
+    var weak_memory_slider = WeakRef (memory_slider);
+    input = null;
+    selector = null;
+    large = null;
+    slider = memory_slider = null;
+    yield view.load ();
+    assert (weak_slider.get () == null);
+    assert (weak_memory_slider.get () == null);
+    assert (backend.write_count == 0);
+}
+
 private async void access_scenario () {
     var backend = new TestBackend ();
     backend.settings = { string_setting ("A", "old-a") };
@@ -522,6 +565,14 @@ public int main (string[] args) {
         var loop = new MainLoop ();
         confirmation_scenario.begin ((obj, result) => {
             confirmation_scenario.end (result);
+            loop.quit ();
+        });
+        loop.run ();
+    });
+    Test.add_func ("/firmware-settings/sliders", () => {
+        var loop = new MainLoop ();
+        slider_scenario.begin ((obj, result) => {
+            slider_scenario.end (result);
             loop.quit ();
         });
         loop.run ();
