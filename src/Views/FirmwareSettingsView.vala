@@ -68,17 +68,18 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
         });
         var header_bar = new Gtk.HeaderBar () {
             show_title_buttons = true,
-            title_widget = new Gtk.Label (_("Firmware Settings"))
+            title_widget = new Gtk.Box (HORIZONTAL, 0)
         };
         var back_button = new Gtk.Button.from_icon_name ("go-previous-symbolic") {
             tooltip_text = _("Back to System")
         };
         back_button.clicked.connect (() => back_requested ());
-        header_bar.pack_start (back_button);
+        var heading = new Gtk.Label (_("Firmware Settings")) { halign = START };
+        heading.add_css_class ("title-3");
+        header_bar.pack_start (heading);
         header_bar.pack_end (refresh_button);
         apply_button = new Gtk.Button.with_label (_("Apply")) { sensitive = false };
         apply_button.add_css_class (Granite.STYLE_CLASS_SUGGESTED_ACTION);
-        header_bar.pack_end (apply_button);
         apply_button.clicked.connect (confirm_save);
 
         status_label = new Gtk.Label ("") {
@@ -109,19 +110,39 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
         content.append (reboot_label);
         groups_stack = new Gtk.Stack () { hhomogeneous = false, vhomogeneous = false };
         groups_sidebar = new Gtk.StackSidebar () {
-            stack = groups_stack, visible = false, width_request = 190
+            stack = groups_stack, visible = false
         };
         content.append (groups_stack);
-        var layout = new Gtk.Box (HORIZONTAL, 12);
-        layout.append (groups_sidebar);
-        layout.append (new Gtk.ScrolledWindow () { child = content, hexpand = true });
+        var sidebar_header = new Gtk.HeaderBar () {
+            show_title_buttons = false,
+            title_widget = new Gtk.Label (_("System"))
+        };
+        sidebar_header.pack_start (back_button);
+        var sidebar = new Gtk.Box (VERTICAL, 0) { width_request = 232 };
+        sidebar.add_css_class ("sidebar");
+        sidebar.append (sidebar_header);
+        sidebar.append (groups_sidebar);
 
+        var footer = new Gtk.Box (HORIZONTAL, 12) {
+            halign = END,
+            margin_top = 12,
+            margin_bottom = 16,
+            margin_start = 24,
+            margin_end = 24
+        };
+        footer.append (apply_button);
         var toolbarview = new Adw.ToolbarView () {
-            content = layout,
-            top_bar_style = RAISED_BORDER
+            content = new Gtk.ScrolledWindow () { child = content, hexpand = true },
+            top_bar_style = FLAT,
+            bottom_bar_style = RAISED_BORDER
         };
         toolbarview.add_top_bar (header_bar);
-        child = toolbarview;
+        toolbarview.add_bottom_bar (footer);
+        var layout = new Gtk.Box (HORIZONTAL, 0);
+        layout.append (sidebar);
+        layout.append (new Gtk.Separator (VERTICAL));
+        layout.append (toolbarview);
+        child = layout;
 
         refresh_button.clicked.connect (() => load.begin ());
     }
@@ -229,8 +250,6 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
                     parent = groups.lookup (group);
                     if (parent == null) {
                         parent = new Gtk.Box (VERTICAL, 12);
-                        var heading = new Granite.HeaderLabel (group);
-                        parent.append (heading);
                         groups.insert (group, parent);
                         groups_stack.add_titled (parent, group, group);
                     }
@@ -480,7 +499,7 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
 
         box.hexpand = true;
         controls.hexpand = false;
-        controls.width_request = 240;
+        controls.width_request = 280;
         controls.valign = CENTER;
         var row = new Gtk.Box (HORIZONTAL, 18);
         row.append (box);
@@ -537,12 +556,8 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
 #endif
         }
 
-        row.margin_top = row.margin_bottom = 16;
-        row.margin_start = row.margin_end = 16;
-        var list = new Gtk.ListBox () { selection_mode = NONE };
-        list.add_css_class ("boxed-list");
-        list.append (new Gtk.ListBoxRow () { child = row, activatable = false });
-        settings_box.append (list);
+        row.margin_top = row.margin_bottom = 12;
+        settings_box.append (row);
     }
 
     private void add_unavailable_draft (string id, string value) {
