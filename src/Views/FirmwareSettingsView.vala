@@ -24,6 +24,7 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
         new HashTable<string, Fwupd.BiosSetting> (str_hash, str_equal);
 #if FIRMWARE_SETTINGS_TEST
     private HashTable<string, Gtk.Entry> test_entries = new HashTable<string, Gtk.Entry> (str_hash, str_equal);
+    private HashTable<string, Gtk.Switch> test_switches = new HashTable<string, Gtk.Switch> (str_hash, str_equal);
     private HashTable<string, Gtk.DropDown> test_dropdowns = new HashTable<string, Gtk.DropDown> (str_hash, str_equal);
     private HashTable<string, Gtk.Label> test_conflicts = new HashTable<string, Gtk.Label> (str_hash, str_equal);
     private HashTable<string, Gtk.Label> test_draft_values = new HashTable<string, Gtk.Label> (str_hash, str_equal);
@@ -178,6 +179,7 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
 #if FIRMWARE_SETTINGS_TEST
         test_entries.remove_all ();
         test_dropdowns.remove_all ();
+        test_switches.remove_all ();
         test_conflicts.remove_all ();
         test_draft_values.remove_all ();
         test_discard_buttons.remove_all ();
@@ -314,6 +316,7 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
         var controls = new Gtk.Box (HORIZONTAL, 6);
         Gtk.Entry? entry = null;
         Gtk.DropDown? dropdown = null;
+        Gtk.Switch? toggle = null;
         var draft = setting.get_id () != null ? pending.lookup (setting.get_id ()) : null;
         var value = draft ?? current;
         var view = WeakRef (owner);
@@ -332,35 +335,43 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
                     selected = i;
                 }
             }
-            var selector = new Gtk.DropDown (values, null) {
-                selected = selected,
-                hexpand = true
-            };
-            dropdown = selector;
-            pending_value_label = new Gtk.Label ("") { xalign = 0, wrap = true, visible = false };
-            dropdown.update_relation (Gtk.AccessibleRelation.LABELLED_BY, name_label, null, -1);
-            controls.append (dropdown);
-            if (id == "com.coreboot-cfr.memory_speed" && possible.length > 1 &&
+            if (id.has_prefix ("com.coreboot-cfr.") && possible.length == 2 &&
+                possible[0] == "Disabled" && possible[1] == "Enabled" &&
                 selected != Gtk.INVALID_LIST_POSITION) {
-                var scale = new Gtk.Scale.with_range (HORIZONTAL, 0, possible.length - 1, 1) {
-                    draw_value = false,
+                toggle = new Gtk.Switch () { active = selected == 1, halign = END, valign = CENTER };
+                toggle.update_relation (Gtk.AccessibleRelation.LABELLED_BY, name_label, null, -1);
+                controls.append (toggle);
+            } else {
+                var selector = new Gtk.DropDown (values, null) {
+                    selected = selected,
                     hexpand = true
                 };
-                scale.set_value (selected);
-                var selector_ref = WeakRef (selector);
-                var scale_ref = WeakRef (scale);
-                scale.value_changed.connect (() => {
-                    var control = selector_ref.get () as Gtk.DropDown;
-                    var slider = scale_ref.get () as Gtk.Scale;
-                    if (control != null && slider != null) control.selected = (uint) (slider.get_value () + 0.5);
-                });
-                selector.notify["selected"].connect (() => {
-                    var control = scale_ref.get () as Gtk.Scale;
-                    var selection = selector_ref.get () as Gtk.DropDown;
-                    if (control != null && selection != null) control.set_value (selection.selected);
-                });
-                controls.orientation = VERTICAL;
-                controls.prepend (scale);
+                dropdown = selector;
+                pending_value_label = new Gtk.Label ("") { xalign = 0, wrap = true, visible = false };
+                dropdown.update_relation (Gtk.AccessibleRelation.LABELLED_BY, name_label, null, -1);
+                controls.append (dropdown);
+                if (id == "com.coreboot-cfr.memory_speed" && possible.length > 1 &&
+                    selected != Gtk.INVALID_LIST_POSITION) {
+                    var scale = new Gtk.Scale.with_range (HORIZONTAL, 0, possible.length - 1, 1) {
+                        draw_value = false,
+                        hexpand = true
+                    };
+                    scale.set_value (selected);
+                    var selector_ref = WeakRef (selector);
+                    var scale_ref = WeakRef (scale);
+                    scale.value_changed.connect (() => {
+                        var control = selector_ref.get () as Gtk.DropDown;
+                        var slider = scale_ref.get () as Gtk.Scale;
+                        if (control != null && slider != null) control.selected = (uint) (slider.get_value () + 0.5);
+                    });
+                    selector.notify["selected"].connect (() => {
+                        var control = scale_ref.get () as Gtk.Scale;
+                        var selection = selector_ref.get () as Gtk.DropDown;
+                        if (control != null && selection != null) control.set_value (selection.selected);
+                    });
+                    controls.orientation = VERTICAL;
+                    controls.prepend (scale);
+                }
             }
         } else if (editable && (setting.get_kind () == Fwupd.BiosSettingKind.INTEGER ||
                                setting.get_kind () == Fwupd.BiosSettingKind.STRING)) {
@@ -420,6 +431,7 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
 
         var entry_ref = WeakRef (entry);
         var dropdown_ref = WeakRef (dropdown);
+        var toggle_ref = WeakRef (toggle);
         var pending_value_ref = WeakRef (pending_value_label);
         var conflict_ref = WeakRef (conflict_label);
         var discard_ref = WeakRef (discard_button);
@@ -456,6 +468,16 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
             });
         }
 
+        if (toggle != null) {
+            toggle.notify["active"].connect (() => {
+                var page = view.get () as FirmwareSettingsView;
+                var control = toggle_ref.get () as Gtk.Switch;
+                if (page != null && control != null) {
+                    page.stage_edit (setting, control.active ? "Enabled" : "Disabled");
+                }
+            });
+        }
+
         box.hexpand = true;
         controls.hexpand = false;
         controls.width_request = 240;
@@ -476,8 +498,11 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
                     return;
                 }
                 page.pending_edits.remove (setting.get_id ());
+                var control = toggle_ref.get () as Gtk.Switch;
                 if (input != null) {
                     input.text = current;
+                } else if (control != null) {
+                    control.active = current == "Enabled";
                 } else if (selector != null) {
                     unowned var possible = get_possible_values (setting);
                     for (uint i = 0; i < possible.length; i++) {
@@ -500,6 +525,9 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
                 owner.test_entries.insert (setting.get_id (), entry);
             } else if (dropdown != null) {
                 owner.test_dropdowns.insert (setting.get_id (), dropdown);
+            }
+            if (toggle != null) {
+                owner.test_switches.insert (setting.get_id (), toggle);
             }
             owner.test_conflicts.insert (setting.get_id (), conflict_label);
             owner.test_discard_buttons.insert (setting.get_id (), discard_button);
@@ -805,6 +833,10 @@ public class About.FirmwareSettingsView : Adw.NavigationPage {
         var entry = test_entries.lookup (id);
         if (entry != null) {
             return entry;
+        }
+        var toggle = test_switches.lookup (id);
+        if (toggle != null) {
+            return toggle;
         }
         return test_dropdowns.lookup (id);
     }
